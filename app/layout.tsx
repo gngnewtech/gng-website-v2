@@ -13,7 +13,7 @@ function Header() {
     <header className="header">
       <div className="container header-inner">
         <Link href="/" className="brand" aria-label="GNG New Tech LLC">
-          <Image src="/gng-logo.jpg" alt="GNG New Tech LLC logo" width={300} height={80} className="brand-logo" priority />
+          <Image src="/gng-logo-final.png" alt="GNG New Tech LLC logo" width={300} height={80} className="brand-logo" priority />
         </Link>
         <nav className="nav">
           <Link href="/">Home</Link>
