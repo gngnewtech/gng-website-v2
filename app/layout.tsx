@@ -1,35 +1,27 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import Image from "next/image";
-import "./globals.css";
+import './globals.css';
+import Image from 'next/image';
+import Link from 'next/link';
+import type { ReactNode } from 'react';
 
-export const metadata: Metadata = {
-  title: "GNG New Tech LLC",
-  description: "Dubai-based supplier of scaffolding systems, formwork materials, timber beams, plywood, accessories, and project supply solutions.",
+export const metadata = {
+  title: 'GNG New Tech LLC',
+  description: 'Dubai-based supplier of scaffolding systems, formwork materials, timber beams, plywood, accessories, and construction support solutions.'
 };
 
 function Header() {
   return (
-    <header className="site-header">
-      <div className="container header-row">
-        <Link href="/" className="brand" aria-label="GNG New Tech LLC home">
-          <div className="brand-mark">
-            <Image src="/gng-logo.jpg" alt="GNG logo" width={1600} height={255} />
-          </div>
-          <div>
-            <div className="brand-title"><span>GNG</span> <span className="blue">NEW TECH LLC</span></div>
-            <div className="brand-subtitle">Dubai, UAE</div>
-          </div>
+    <header className="header">
+      <div className="container header-inner">
+        <Link href="/" className="brand" aria-label="GNG New Tech LLC">
+          <Image src="/gng-logo.jpg" alt="GNG New Tech LLC logo" width={300} height={80} className="brand-logo" priority />
         </Link>
-
         <nav className="nav">
           <Link href="/">Home</Link>
           <Link href="/about">About</Link>
           <Link href="/products">Products</Link>
           <Link href="/contact">Contact</Link>
         </nav>
-
-        <Link href="/contact" className="btn btn-primary">Request Quote</Link>
+        <Link className="cta" href="/contact">Request Quote</Link>
       </div>
     </header>
   );
@@ -38,18 +30,18 @@ function Header() {
 function Footer() {
   return (
     <footer className="footer">
-      <div className="container footer-row">
+      <div className="container footer-inner">
         <div>
-          <div style={{ fontWeight: 800, letterSpacing: '-0.02em' }}>GNG NEW TECH LLC</div>
-          <small>International City, Dubai, UAE · sales@gngnt.com · 056 4480 245</small>
+          <div style={{ fontWeight: 700 }}>GNG NEW TECH LLC</div>
+          <div style={{ color: '#64748b', marginTop: 6 }}>International City, Dubai, UAE · sales@gngnt.com · 056 4480 245</div>
         </div>
-        <small>© 2026 GNG New Tech LLC. All rights reserved.</small>
+        <div style={{ color: '#64748b' }}>© 2026 GNG New Tech LLC. All rights reserved.</div>
       </div>
     </footer>
   );
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>

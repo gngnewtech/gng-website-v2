@@ -1,58 +1,28 @@
-import Link from "next/link";
-
-const products = [
-  {
-    title: "Scaffolding Systems",
-    desc: "Reliable access and support systems for construction, industrial, and maintenance projects.",
-  },
-  {
-    title: "Formwork Systems",
-    desc: "Practical formwork solutions designed to support efficient site operations and concrete works.",
-  },
-  {
-    title: "H20 Timber Beam",
-    desc: "Quality timber beam supply for formwork applications with professional commercial support.",
-  },
-  {
-    title: "Plywood & Boards",
-    desc: "Construction-grade panel materials for formwork, temporary works, and general project supply.",
-  },
-  {
-    title: "Accessories",
-    desc: "Essential components and site-use accessories to complete system requirements with confidence.",
-  },
-  {
-    title: "Rental & Project Supply",
-    desc: "Flexible support for project-based requirements, including supply coordination and rental inquiries.",
-  },
+const items = [
+  'Scaffolding Systems',
+  'Formwork Systems',
+  'H20 Timber Beam',
+  'Plywood & Boards',
+  'Accessories',
+  'Project Supply Support',
 ];
 
 export default function ProductsPage() {
   return (
-    <main>
-      <section className="hero page-hero">
-        <div className="container" style={{ padding: '84px 0 90px', position: 'relative' }}>
-          <div className="badge">Products</div>
-          <h1>Main product categories for contractors, traders, and project buyers</h1>
-          <p className="lead">
-            A cleaner structure helps visitors understand what GNG supplies at a glance,
-            while creating a stronger path to quotation requests.
-          </p>
-        </div>
-      </section>
-
-      <section className="section section-soft">
-        <div className="container three-col">
-          {products.map((item) => (
-            <div key={item.title} className="product-card">
-              <div className="tiny-label">Category</div>
-              <h3>{item.title}</h3>
-              <p>{item.desc}</p>
-              <Link href="/contact" className="link">Request information →</Link>
+    <main className="section soft">
+      <div className="container">
+        <div className="eyebrow" style={{ color: '#1f5fbf' }}>Products</div>
+        <h1 className="title2">Construction Supply Categories</h1>
+        <div className="grid-3">
+          {items.map((item) => (
+            <div className="card" key={item}>
+              <div className="eyebrow">Category</div>
+              <h3>{item}</h3>
+              <p className="muted">Designed as a strong B2B presentation section for future product detail expansion.</p>
             </div>
           ))}
         </div>
-      </section>
+      </div>
     </main>
   );
 }
