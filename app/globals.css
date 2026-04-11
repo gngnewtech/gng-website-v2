@@ -23,8 +23,17 @@ a { color: inherit; text-decoration: none; }
   backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
 }
 .header-inner { display:flex; align-items:center; justify-content:space-between; padding:16px 0; gap:20px; }
-.brand { display:flex; align-items:center; gap:14px; }
-.brand-logo { height: 58px; width: auto; display:block; }
+.brand {
+  display: flex;
+  align-items: center;
+  min-height: 100px;
+}
+
+.brand-logo {
+  height: 96px !important;
+  width: auto !important;
+  display: block;
+}
 .nav { display:flex; gap:32px; color:#334155; font-size:15px; }
 .cta { background: var(--blue); color: white; padding: 12px 20px; border-radius: 16px; font-weight: 700; display:inline-block; }
 .hero { background: linear-gradient(135deg,#edf3fb,#e9eff8 55%,#dfe8f3); padding: 72px 0; }
