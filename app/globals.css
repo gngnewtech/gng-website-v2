@@ -99,6 +99,44 @@ a { color: inherit; text-decoration: none; }
 
 .product-card,
 .info-card,
+..section {
+  padding: 72px 0;
+}
+
+.section-soft {
+  background: rgba(255, 255, 255, 0.45);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.section-heading {
+  max-width: 760px;
+  margin-bottom: 32px;
+}
+
+.section-heading h1,
+.section-heading h2 {
+  margin: 12px 0 16px;
+  font-size: 44px;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.section-lead {
+  max-width: 760px;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1.65;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.product-card,
+.info-card,
 .cta-panel {
   background: var(--card);
   border: 1px solid var(--line);
@@ -106,6 +144,101 @@ a { color: inherit; text-decoration: none; }
   padding: 28px;
 }
 
+.product-card h3,
+.info-card h2 {
+  margin: 0 0 14px;
+}
+
+.product-card ul,
+.simple-list {
+  margin: 0 0 18px;
+  padding-left: 18px;
+}
+
+.product-card li,
+.simple-list li {
+  margin-bottom: 10px;
+}
+
+.product-card p,
+.info-card p,
+.cta-panel p {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.card-actions {
+  margin-top: 22px;
+}
+
+.secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--blue-dark);
+  font-weight: 700;
+}
+
+.secondary-btn:hover {
+  background: #f7faff;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.mini-title {
+  color: var(--blue);
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.cta-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.cta-actions {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .two-col,
+  .cta-panel {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .section-heading h1,
+  .section-heading h2 {
+    font-size: 34px;
+  }
+
+  .section-lead {
+    font-size: 18px;
+  }
+
+  .product-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .product-card h3,
 .info-card h2 {
   margin: 0 0 14px;
