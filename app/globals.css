@@ -37,7 +37,7 @@ a { color: inherit; text-decoration: none; }
   flex-shrink: 0;
 }
 .brand-logo {
-  height: 96px !important;
+  height: 88px !important;
   width: auto !important;
   display: block;
 }
@@ -48,9 +48,18 @@ a { color: inherit; text-decoration: none; }
   margin-left: auto;
 }
 .cta {
-  margin-left: 20px;
+  margin-left: 12px;
   padding: 12px 24px;
   border-radius: 18px;
+  background: var(--blue);
+  color: white;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cta:hover {
+  background: var(--blue-dark);
 }
 .hero { background: linear-gradient(135deg,#edf3fb,#e9eff8 55%,#dfe8f3); padding: 72px 0; }
 .hero-grid, .two-col { display:grid; grid-template-columns: 1.05fr 0.95fr; gap:40px; align-items:center; }
