@@ -7,11 +7,9 @@ const categories = [
       "Cuplock Scaffolding",
       "Frame Scaffolding",
       "Steel Planks",
-      "Walk Boards",
       "Base Jack",
-      "U Head Jack",
     ],
-    desc: "Suitable for slab work, access platforms, external elevation works, and general site support.",
+    desc: "Practical scaffolding supply for access platforms, slab works, and general site support.",
   },
   {
     title: "Formwork Systems",
@@ -20,10 +18,8 @@ const categories = [
       "Column Formwork",
       "Slab Formwork",
       "Beam Formwork",
-      "Prop Support System",
-      "Formwork Panels",
     ],
-    desc: "Efficient and dependable formwork supply for concrete structure works and general construction projects.",
+    desc: "Reliable formwork solutions for concrete structure works and project-based construction requirements.",
   },
   {
     title: "H20 Timber Beam",
@@ -31,8 +27,9 @@ const categories = [
       "Standard H20 Timber Beam",
       "Formwork Beam Support",
       "Beam Accessories",
+      "Site-use Beam Supply",
     ],
-    desc: "Widely used for slab, beam, and wall formwork systems with stable performance and practical site application.",
+    desc: "Suitable for slab, beam, and wall formwork systems with stable site performance.",
   },
   {
     title: "Plywood & Boards",
@@ -42,7 +39,7 @@ const categories = [
       "Construction Boards",
       "Formwork Boards",
     ],
-    desc: "Strong and practical board solutions for repeated use in formwork and construction site support.",
+    desc: "Strong and practical board solutions for formwork support and repeated construction use.",
   },
   {
     title: "Accessories",
@@ -50,22 +47,19 @@ const categories = [
       "Tie Rod",
       "Wing Nut",
       "Water Stop",
-      "Clamp",
-      "Coupler",
-      "Formwork Fasteners",
+      "Clamp & Coupler",
     ],
-    desc: "Complete accessory supply to support efficient installation, connection, and dismantling on site.",
+    desc: "Essential accessories to support efficient connection, installation, and dismantling on site.",
   },
   {
     title: "Project Supply Support",
     items: [
       "Bulk Supply",
-      "Fast Delivery Coordination",
-      "Site-based Material Support",
+      "Quotation Support",
       "Contractor Inquiry Handling",
-      "Trading Supply Support",
+      "Trading Supply Coordination",
     ],
-    desc: "Responsive product support for project buyers, contractors, and construction material traders.",
+    desc: "Flexible support for contractors, traders, and project buyers across the UAE market.",
   },
 ];
 
@@ -79,10 +73,10 @@ const applications = [
 ];
 
 const strengths = [
-  "Reliable product supply for construction projects",
+  "UAE-based construction supply focus",
+  "Responsive quotation handling",
+  "Practical product range for site use",
   "Suitable for contractors, traders, and project buyers",
-  "Practical support for UAE market requirements",
-  "Fast response for quotation and product inquiries",
 ];
 
 export default function ProductsPage() {
@@ -103,12 +97,20 @@ export default function ProductsPage() {
             {categories.map((category) => (
               <article key={category.title} className="product-card">
                 <h3>{category.title}</h3>
+
                 <ul>
                   {category.items.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
+
                 <p>{category.desc}</p>
+
+                <div className="card-actions">
+                  <Link href="/contact" className="secondary-btn">
+                    Send Inquiry
+                  </Link>
+                </div>
               </article>
             ))}
           </div>
@@ -129,7 +131,7 @@ export default function ProductsPage() {
 
           <div className="info-card">
             <div className="mini-title">WHY GNG</div>
-            <h2>Supply approach that supports project needs</h2>
+            <h2>Supply approach that supports project requirements</h2>
             <ul className="simple-list">
               {strengths.map((item) => (
                 <li key={item}>{item}</li>
@@ -142,11 +144,11 @@ export default function ProductsPage() {
       <section className="section">
         <div className="container cta-panel">
           <div>
-            <div className="mini-title">SEND INQUIRY</div>
-            <h2>Need product details or a quotation?</h2>
+            <div className="mini-title">REQUEST QUOTATION</div>
+            <h2>Need product details, quantity support, or pricing?</h2>
             <p>
-              Contact GNG New Tech LLC for product inquiries, quantity requests,
-              and project-based supply support.
+              Contact GNG New Tech LLC for scaffolding systems, formwork supply,
+              timber beam, plywood, accessories, and project-based material support.
             </p>
           </div>
 
