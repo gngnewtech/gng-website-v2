@@ -6,14 +6,16 @@ export default function HomePage() {
       <section className="hero">
         <div className="container hero-grid">
           <div>
-            <div className="badge">BUILDING MATERIAL SUPPLIER</div>
+            <div className="badge">DUBAI BUILDING MATERIAL SUPPLIER</div>
 
             <h1 className="h1">
-              Supply You Can Rely On
+              Reliable Supply for Construction and Project Requirements
             </h1>
 
             <p className="lead">
-              Supporting construction and project requirements across the UAE.
+              GNG New Tech LLC supports contractors, traders, and project buyers
+              across the UAE with practical building material supply and
+              responsive quotation support.
             </p>
 
             <div className="pills">
