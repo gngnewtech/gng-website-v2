@@ -1,8 +1,10 @@
+import Image from "next/image";
 import Link from "next/link";
 
 const categories = [
   {
     title: "Scaffolding Systems",
+    image: "/products/scaffolding.jpg",
     items: [
       "Cuplock Scaffolding",
       "Frame Scaffolding",
@@ -13,6 +15,7 @@ const categories = [
   },
   {
     title: "Formwork Systems",
+    image: "/products/formwork.jpg",
     items: [
       "Wall Formwork",
       "Column Formwork",
@@ -23,6 +26,7 @@ const categories = [
   },
   {
     title: "H20 Timber Beam",
+    image: "/products/h20-beam.jpg",
     items: [
       "Standard H20 Timber Beam",
       "Formwork Beam Support",
@@ -33,6 +37,7 @@ const categories = [
   },
   {
     title: "Plywood & Boards",
+    image: "/products/plywood.jpg",
     items: [
       "Film Faced Plywood",
       "Commercial Plywood",
@@ -43,6 +48,7 @@ const categories = [
   },
   {
     title: "Accessories",
+    image: "/products/accessories.jpg",
     items: [
       "Tie Rod",
       "Wing Nut",
@@ -53,6 +59,7 @@ const categories = [
   },
   {
     title: "Project Supply Support",
+    image: "/products/project-support.jpg",
     items: [
       "Bulk Supply",
       "Quotation Support",
@@ -95,21 +102,36 @@ export default function ProductsPage() {
 
           <div className="product-grid">
             {categories.map((category) => (
-              <article key={category.title} className="product-card">
-                <h3>{category.title}</h3>
+              <article
+                key={category.title}
+                className="product-card product-card-with-image"
+              >
+                <div className="product-image-wrap">
+                  <Image
+                    src={category.image}
+                    alt={category.title}
+                    width={640}
+                    height={400}
+                    className="product-image"
+                  />
+                </div>
 
-                <ul>
-                  {category.items.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
+                <div className="product-card-body">
+                  <h3>{category.title}</h3>
 
-                <p>{category.desc}</p>
+                  <ul>
+                    {category.items.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
 
-                <div className="card-actions">
-                  <Link href="/contact" className="secondary-btn">
-                    Send Inquiry
-                  </Link>
+                  <p>{category.desc}</p>
+
+                  <div className="card-actions">
+                    <Link href="/contact" className="secondary-btn">
+                      Send Inquiry
+                    </Link>
+                  </div>
                 </div>
               </article>
             ))}
