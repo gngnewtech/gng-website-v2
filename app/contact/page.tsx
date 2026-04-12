@@ -1,6 +1,37 @@
+"use client";
+
 import Link from "next/link";
+import { FormEvent, useState } from "react";
 
 export default function ContactPage() {
+  const [fullName, setFullName] = useState("");
+  const [company, setCompany] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [product, setProduct] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const whatsappNumber = "971504801886";
+
+    const text =
+      `Hello GNG New Tech LLC,%0A%0A` +
+      `I would like to send an inquiry.%0A%0A` +
+      `Full Name: ${fullName || "-"}%0A` +
+      `Company: ${company || "-"}%0A` +
+      `Phone / WhatsApp: ${phone || "-"}%0A` +
+      `Email: ${email || "-"}%0A` +
+      `Product Needed: ${product || "-"}%0A` +
+      `Quantity: ${quantity || "-"}%0A` +
+      `Message: ${message || "-"}`;
+
+    const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${text}`;
+    window.open(whatsappUrl, "_blank");
+  };
+
   return (
     <main>
       <section className="section">
@@ -9,9 +40,8 @@ export default function ContactPage() {
             <div className="badge">CONTACT US</div>
             <h1>Request a Quote</h1>
             <p className="section-lead">
-              Send us your product inquiry, quantity requirement, or project
-              supply request. GNG New Tech LLC supports contractors, traders,
-              and project buyers across the UAE.
+              Send us your inquiry for scaffolding, formwork, plywood,
+              accessories, or project supply support.
             </p>
           </div>
 
@@ -33,7 +63,7 @@ export default function ContactPage() {
 
                 <div className="contact-info-item">
                   <strong>Phone / WhatsApp</strong>
-                  <span>056 448 0245</span>
+                  <span>050 480 1886</span>
                 </div>
 
                 <div className="contact-info-item">
@@ -65,11 +95,17 @@ export default function ContactPage() {
               <div className="mini-title">SEND INQUIRY</div>
               <h2>Tell us what you need</h2>
 
-              <form className="contact-form">
+              <form className="contact-form" onSubmit={handleSubmit}>
                 <div className="form-row">
                   <div className="form-field">
                     <label htmlFor="name">Full Name</label>
-                    <input id="name" type="text" placeholder="Your name" />
+                    <input
+                      id="name"
+                      type="text"
+                      placeholder="Your name"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                    />
                   </div>
 
                   <div className="form-field">
@@ -78,6 +114,8 @@ export default function ContactPage() {
                       id="company"
                       type="text"
                       placeholder="Company name"
+                      value={company}
+                      onChange={(e) => setCompany(e.target.value)}
                     />
                   </div>
                 </div>
@@ -89,12 +127,20 @@ export default function ContactPage() {
                       id="phone"
                       type="text"
                       placeholder="Your mobile or WhatsApp"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
                     />
                   </div>
 
                   <div className="form-field">
                     <label htmlFor="email">Email</label>
-                    <input id="email" type="email" placeholder="Your email" />
+                    <input
+                      id="email"
+                      type="email"
+                      placeholder="Your email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
                   </div>
                 </div>
 
@@ -104,7 +150,9 @@ export default function ContactPage() {
                     <input
                       id="product"
                       type="text"
-                      placeholder="Scaffolding, plywood, accessories, etc."
+                      placeholder="Product name or category"
+                      value={product}
+                      onChange={(e) => setProduct(e.target.value)}
                     />
                   </div>
 
@@ -114,6 +162,8 @@ export default function ContactPage() {
                       id="quantity"
                       type="text"
                       placeholder="Required quantity"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
                     />
                   </div>
                 </div>
@@ -125,13 +175,15 @@ export default function ContactPage() {
                       id="message"
                       placeholder="Please describe your project requirement, product details, size, quantity, or delivery request."
                       rows={6}
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
                     />
                   </div>
                 </div>
 
                 <div className="form-actions">
                   <button type="submit" className="cta">
-                    Submit Inquiry
+                    Submit Inquiry via WhatsApp
                   </button>
                 </div>
               </form>
@@ -152,9 +204,14 @@ export default function ContactPage() {
           </div>
 
           <div className="cta-actions">
-            <Link href="/" className="secondary-btn">
-              Back to Home
-            </Link>
+            <a
+              href="https://wa.me/971504801886"
+              target="_blank"
+              rel="noreferrer"
+              className="secondary-btn"
+            >
+              Open WhatsApp
+            </a>
           </div>
         </div>
       </section>
