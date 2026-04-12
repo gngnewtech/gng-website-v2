@@ -33,7 +33,11 @@ function Footer() {
       <div className="container footer-inner">
         <div>
           <div style={{ fontWeight: 700 }}>GNG NEW TECH LLC</div>
-          <div style={{ color: '#64748b', marginTop: 6 }}>International City, Dubai, UAE · sales@gngnt.com · 056 4480 245</div>
+          <p>
+  International City, Dubai, UAE ·{" "}
+  <a href="mailto:sales@gngnt.com">sales@gngnt.com</a> ·{" "}
+  <a href="tel:+971504801886">+971 50 480 1886</a>
+</p>
         </div>
         <div style={{ color: '#64748b' }}>© 2026 GNG New Tech LLC. All rights reserved.</div>
       </div>
