@@ -773,3 +773,18 @@ a { color: inherit; text-decoration: none; }
     width: 100%;
   }
 }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid #d9e4f2;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--blue);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
