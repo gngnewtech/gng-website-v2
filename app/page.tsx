@@ -6,17 +6,14 @@ export default function HomePage() {
       <section className="hero">
         <div className="container hero-grid">
           <div>
-            <div className="badge">DUBAI-BASED BUILDING MATERIAL SUPPLIER</div>
+            <div className="badge">BUILDING MATERIAL SUPPLIER</div>
 
             <h1 className="h1">
-              Reliable Building Material Supply for Project Requirements
+              Supply You Can Rely On
             </h1>
 
             <p className="lead">
-              GNG New Tech LLC supports contractors, traders, and project buyers
-              across the UAE with practical supply solutions for scaffolding,
-              formwork, timber beam, plywood, accessories, and related building
-              material requirements.
+              Supporting construction and project requirements across the UAE.
             </p>
 
             <div className="pills">
@@ -39,10 +36,7 @@ export default function HomePage() {
             <div className="hero-card-grid">
               <div className="hero-box">
                 <div className="mini-title">PRODUCT RANGE</div>
-                <strong>
-                  Scaffolding, formwork, timber beam, plywood, accessories and
-                  related building materials
-                </strong>
+                <strong>Building materials and project supply support</strong>
               </div>
 
               <div className="hero-box">
@@ -52,23 +46,20 @@ export default function HomePage() {
 
               <div className="hero-box">
                 <div className="mini-title">SUPPLY SUPPORT</div>
-                <strong>
-                  Practical supply support for construction and project requirements
-                </strong>
+                <strong>Reliable sourcing and responsive quotation</strong>
               </div>
 
               <div className="hero-box">
                 <div className="mini-title">SERVICE</div>
-                <strong>Responsive quotation, sourcing support and customer service</strong>
+                <strong>Practical support for project requirements</strong>
               </div>
             </div>
 
             <div className="hero-panel">
               <div className="mini-title">COMPANY POSITIONING</div>
               <p>
-                GNG New Tech LLC is a Dubai-based building material supplier
-                serving site demand, trading supply, and project-based purchasing
-                requirements with a practical and professional approach.
+                GNG New Tech LLC is a Dubai-based supplier serving building
+                material demand with a practical and professional approach.
               </p>
             </div>
           </div>
