@@ -9,13 +9,13 @@ export default function HomePage() {
             <div className="badge">DUBAI-BASED BUILDING MATERIAL SUPPLIER</div>
 
             <h1 className="h1">
-              Reliable Building Material Supply for Construction Projects
+              Reliable Building Material Supply for Project Requirements
             </h1>
 
             <p className="lead">
               GNG New Tech LLC supports contractors, traders, and project buyers
               across the UAE with practical supply solutions for scaffolding,
-              formwork, timber beam, plywood, accessories, and related project
+              formwork, timber beam, plywood, accessories, and related building
               material requirements.
             </p>
 
@@ -40,8 +40,8 @@ export default function HomePage() {
               <div className="hero-box">
                 <div className="mini-title">PRODUCT RANGE</div>
                 <strong>
-                  Scaffolding, formwork, timber beam, plywood, accessories and related
-                  building materials
+                  Scaffolding, formwork, timber beam, plywood, accessories and
+                  related building materials
                 </strong>
               </div>
 
@@ -66,9 +66,9 @@ export default function HomePage() {
             <div className="hero-panel">
               <div className="mini-title">COMPANY POSITIONING</div>
               <p>
-                GNG New Tech LLC is a Dubai-based building material supplier serving
-                site demand, trading supply, and project-based purchasing requirements
-                with a practical and professional approach.
+                GNG New Tech LLC is a Dubai-based building material supplier
+                serving site demand, trading supply, and project-based purchasing
+                requirements with a practical and professional approach.
               </p>
             </div>
           </div>
