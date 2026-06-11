@@ -1,32 +1,3 @@
-import './globals.css';
-import Image from 'next/image';
-import Link from 'next/link';
-import type { ReactNode } from 'react';
-
-export const metadata = {
-  title: 'GNG New Tech LLC',
-  description: 'Dubai-based supplier of scaffolding systems, formwork materials, timber beams, plywood, accessories, and construction support solutions.'
-};
-
-function Header() {
-  return (
-    <header className="header">
-      <div className="container header-inner">
-        <Link href="/" className="brand" aria-label="GNG New Tech LLC">
-          <Image src="/gng-logo-final.png" alt="GNG New Tech LLC logo" width={420} height={120} className="brand-logo" priority />
-        </Link>
-        <nav className="nav">
-          <Link href="/">Home</Link>
-          <Link href="/about">About</Link>
-          <Link href="/products">Products</Link>
-          <Link href="/contact">Contact</Link>
-        </nav>
-        <Link className="cta" href="/contact">Request Quote</Link>
-      </div>
-    </header>
-  );
-}
-
 function Footer() {
   return (
     <footer className="footer">
@@ -34,25 +5,15 @@ function Footer() {
         <div>
           <div style={{ fontWeight: 700 }}>GNG NEW TECH LLC</div>
           <p>
-  International City, Dubai, UAE ·{" "}
-  <a href="mailto:sales@gngnt.com">sales@gngnt.com</a> ·{" "}
-  <a href="tel:+971504801886">+971 50 480 1886</a>
-</p>
+            International City, Dubai, UAE ·{" "}
+            <a href="mailto:sales@gngnt.com">sales@gngnt.com</a> ·{" "}
+            <a href="tel:+971586009788">+971 58 600 9788</a>
+          </p>
         </div>
-        <div style={{ color: '#64748b' }}>© 2026 GNG New Tech LLC. All rights reserved.</div>
+        <div style={{ color: "#64748b" }}>
+          © 2026 GNG New Tech LLC. All rights reserved.
+        </div>
       </div>
     </footer>
-  );
-}
-
-export default function RootLayout({ children }: { children: ReactNode }) {
-  return (
-    <html lang="en">
-      <body>
-        <Header />
-        {children}
-        <Footer />
-      </body>
-    </html>
   );
 }
