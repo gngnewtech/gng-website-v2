@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useState } from "react";
 
 export default function ContactPage() {
@@ -15,7 +14,7 @@ export default function ContactPage() {
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    const whatsappNumber = "971504801886";
+    const whatsappNumber = "971586009788";
 
     const text =
       `Hello GNG New Tech LLC,%0A%0A` +
@@ -63,7 +62,7 @@ export default function ContactPage() {
 
                 <div className="contact-info-item">
                   <strong>Phone / WhatsApp</strong>
-                  <span>050 480 1886</span>
+                  <span>+971 58 600 9788</span>
                 </div>
 
                 <div className="contact-info-item">
@@ -205,7 +204,7 @@ export default function ContactPage() {
 
           <div className="cta-actions">
             <a
-              href="https://wa.me/971504801886"
+              href="https://wa.me/971586009788"
               target="_blank"
               rel="noreferrer"
               className="secondary-btn"
