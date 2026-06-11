@@ -38,7 +38,14 @@ function Footer() {
           <p>
             International City, Dubai, UAE ·{" "}
             <a href="mailto:sales@gngnt.com">sales@gngnt.com</a> ·{" "}
-            <a href="tel:+971586009788">+971 58 600 9788</a>
+            <a href="tel:+971586009788">Call</a> ·{" "}
+            <a
+              href="https://wa.me/971586009788"
+              target="_blank"
+              rel="noreferrer"
+            >
+              WhatsApp
+            </a>
           </p>
         </div>
 
