@@ -19,6 +19,13 @@ function Header() {
           <Link href="/about">About</Link>
           <Link href="/products">Products</Link>
           <Link href="/contact">Contact</Link>
+          <a
+            href="https://qiye.aliyun.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Webmail
+          </a>
         </nav>
 
         <Link className="cta" href="/contact">
@@ -42,7 +49,7 @@ function Footer() {
             <a
               href="https://wa.me/971586009788"
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
             >
               WhatsApp
             </a>
