@@ -29,6 +29,11 @@ const META: Record<Status, { label: string; color: string; bg: string; bar: stri
   absent: { label: "未打卡", color: "#64748b", bg: "#f1f5f9", bar: "#cbd5e1" },
 };
 const TASK_LABEL: Record<TaskState, string> = { todo: "待开始", doing: "进行中", done: "已完成" };
+const TASK_TONE: Record<TaskState, { color: string; bg: string }> = {
+  todo: { color: "#64748b", bg: "#f1f5f9" },
+  doing: { color: "#b45309", bg: "#fffbeb" },
+  done: { color: "#047857", bg: "#ecfdf5" },
+};
 
 async function api(body: any) {
   const res = await fetch("/api/tasks", {
@@ -124,23 +129,39 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {filtered.map((emp) => {
                 const t = tasksOf(emp.id); const s = stats(t); const m = META[statusOf(emp, t)];
+                const pending = t.filter((x) => x.state !== "done");
                 return (
-                  <button key={emp.id} onClick={() => setSelectedId(emp.id)} style={rowStyle}>
-                    <div style={avatar}>{emp.name.slice(-2)}</div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontWeight: 600 }}>{emp.name}</span>
-                        <span style={{ fontSize: 12, color: "#94a3b8" }}>{emp.role}</span>
+                  <button key={emp.id} onClick={() => setSelectedId(emp.id)} style={{ ...rowStyle, alignItems: "stretch", flexDirection: "column", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16, width: "100%" }}>
+                      <div style={avatar}>{emp.name.slice(-2)}</div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontWeight: 600 }}>{emp.name}</span>
+                          <span style={{ fontSize: 12, color: "#94a3b8" }}>{emp.role}</span>
+                        </div>
+                        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                          <div style={{ flex: 1 }}>{bar(s.pct, m.bar)}</div>
+                          <span style={{ fontSize: 13, color: "#64748b", width: 56, textAlign: "right" }}>{s.done}/{s.total} 项</span>
+                        </div>
                       </div>
-                      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                        <div style={{ flex: 1 }}>{bar(s.pct, m.bar)}</div>
-                        <span style={{ fontSize: 13, color: "#64748b", width: 56, textAlign: "right" }}>{s.done}/{s.total} 项</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{ fontSize: 18, fontWeight: 700, width: 48, textAlign: "right" }}>{s.pct}%</span>
+                        <span style={{ ...pill, color: m.color, background: m.bg, borderColor: m.bg }}>{m.label}</span>
                       </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <span style={{ fontSize: 18, fontWeight: 700, width: 48, textAlign: "right" }}>{s.pct}%</span>
-                      <span style={{ ...pill, color: m.color, background: m.bg, borderColor: m.bg }}>{m.label}</span>
-                    </div>
+                    {pending.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, paddingLeft: 60 }}>
+                        {pending.map((x) => (
+                          <span key={x.id} style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 999, color: TASK_TONE[x.state].color, background: TASK_TONE[x.state].bg }}>{TASK_LABEL[x.state]}</span>
+                            {x.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {t.length > 0 && pending.length === 0 && (
+                      <div style={{ fontSize: 12, color: "#059669", paddingLeft: 60 }}>✓ 今日任务已全部完成</div>
+                    )}
                   </button>
                 );
               })}
@@ -184,7 +205,7 @@ function Detail({ emp, tasks, onBack, onCycle, onAssignHere, onTransfer, bar }: 
         {tasks.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 32, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>还没有任务</div> :
           tasks.map((t: Task) => (
             <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 16px" }}>
-              <button onClick={() => onCycle(t)} style={{ background: "#f1f5f9", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60 }}>{TASK_LABEL[t.state]}</button>
+              <button onClick={() => onCycle(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60 }}>{TASK_LABEL[t.state]}</button>
               <span style={{ flex: 1, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
               <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13 }}>转交</button>
             </div>
