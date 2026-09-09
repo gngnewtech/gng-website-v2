@@ -1,34 +1,36 @@
 // 放置位置：app/api/tasks/route.ts
-// 处理任务的分配、转交、改状态、删除。只有管理员能调用（RLS 会再兜一层）。
+// 处理任务的分配、转交、改状态、删除。
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-async function requireAdmin() {
+async function getContext() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "未登录", supabase: null, isAdmin: false };
+  if (!user) return { supabase: null, me: null };
   const { data: me } = await supabase
     .from("employees")
-    .select("is_admin")
+    .select("id, is_admin")
     .eq("user_id", user.id)
     .maybeSingle();
-  return { error: null, supabase, isAdmin: !!me?.is_admin, user };
+  return { supabase, me };
 }
 
-// 分配 / 转交 / 改状态
 export async function POST(req: Request) {
-  const { supabase, isAdmin, error } = await requireAdmin();
-  if (error || !supabase) return NextResponse.json({ error }, { status: 401 });
+  const { supabase, me } = await getContext();
+  if (!supabase || !me) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const body = await req.json();
   const { action } = body;
 
-  // 员工改自己任务状态时也允许（RLS 保证只能改自己的），其余动作需管理员
+  // 建任务：管理员可给任何人建；员工只能给自己建
   if (action === "assign") {
-    if (!isAdmin) return NextResponse.json({ error: "无权限" }, { status: 403 });
-    const { assignee_id, name } = body;
-    if (!assignee_id || !name?.trim())
-      return NextResponse.json({ error: "缺少员工或任务内容" }, { status: 400 });
+    let { assignee_id, name } = body;
+    if (!name?.trim()) return NextResponse.json({ error: "缺少任务内容" }, { status: 400 });
+    if (!me.is_admin) {
+      // 员工强制建给自己，忽略传入的 assignee_id
+      assignee_id = me.id;
+    }
+    if (!assignee_id) return NextResponse.json({ error: "缺少员工" }, { status: 400 });
     const { error: e } = await supabase
       .from("tasks")
       .insert({ assignee_id, name: name.trim(), state: "todo" });
@@ -36,8 +38,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // 转交：仅管理员
   if (action === "transfer") {
-    if (!isAdmin) return NextResponse.json({ error: "无权限" }, { status: 403 });
+    if (!me.is_admin) return NextResponse.json({ error: "无权限" }, { status: 403 });
     const { task_id, to_assignee_id } = body;
     const { error: e } = await supabase
       .from("tasks")
@@ -47,6 +50,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // 改状态：管理员改任何；员工改自己的（RLS 兜底）
   if (action === "setState") {
     const { task_id, state } = body;
     if (!["todo", "doing", "done"].includes(state))
@@ -59,8 +63,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // 删除：仅管理员
   if (action === "delete") {
-    if (!isAdmin) return NextResponse.json({ error: "无权限" }, { status: 403 });
+    if (!me.is_admin) return NextResponse.json({ error: "无权限" }, { status: 403 });
     const { task_id } = body;
     const { error: e } = await supabase.from("tasks").delete().eq("id", task_id);
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
