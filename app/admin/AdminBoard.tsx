@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
-type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean };
+type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null };
 type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean };
 
 function stats(tasks: Task[]) {
@@ -57,6 +57,8 @@ function QuadBadge({ t }: { t: Task }) {
   const q = QUAD_META[quadrantOf(t)];
   return <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: q.color, background: q.bg, whiteSpace: "nowrap" }}>{q.label}</span>;
 }
+const chipStyle = (on: boolean, c: string): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${on ? c : "#e2e8f0"}`, background: on ? c : "#fff", color: on ? "#fff" : "#94a3b8", fontWeight: on ? 600 : 400, whiteSpace: "nowrap", flex: "none" });
+const noteBtnStyle = (has: boolean): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${has ? "#0f172a" : "#e2e8f0"}`, background: has ? "#0f172a" : "#fff", color: has ? "#fff" : "#94a3b8", whiteSpace: "nowrap", flex: "none" });
 
 async function api(body: any) {
   const res = await fetch("/api/tasks", {
@@ -103,6 +105,14 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
     await api({ action: "setState", task_id: task.id, state: next });
     router.refresh();
   };
+  const doSetPriority = async (task: Task, important: boolean, urgent: boolean) => {
+    await api({ action: "setPriority", task_id: task.id, important, urgent });
+    router.refresh();
+  };
+  const doSetNote = async (taskId: string, note: string) => {
+    await api({ action: "setNote", task_id: taskId, note });
+    router.refresh();
+  };
   const logout = async () => { await fetch("/api/logout", { method: "POST" }); router.push("/login"); router.refresh(); };
 
   const bar = (pct: number, color: string) => (
@@ -126,7 +136,8 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
       <main style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
         {selected ? (
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
-            onCycle={doCycle} onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar} />
+            onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote}
+            onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar} />
         ) : (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
@@ -200,9 +211,14 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
   );
 }
 
-function Detail({ emp, tasks, onBack, onCycle, onAssignHere, onTransfer, bar }: any) {
+function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onAssignHere, onTransfer, bar }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort(byPriority);
+  const [editingNote, setEditingNote] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const openNote = (t: Task) => { setEditingNote(t.id); setNoteDraft(t.note ?? ""); };
+  const saveNote = (t: Task) => { setEditingNote(null); onSetNote(t.id, noteDraft.trim()); };
+
   return (
     <div>
       <button onClick={onBack} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", marginBottom: 16 }}>← 返回列表</button>
@@ -225,17 +241,37 @@ function Detail({ emp, tasks, onBack, onCycle, onAssignHere, onTransfer, bar }: 
         <h4 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: 0 }}>任务清单</h4>
         <button onClick={onAssignHere} style={btnPrimary}>+ 给 {emp.name} 派任务</button>
       </div>
-      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>按重要紧急程度排序 · 点左侧状态字切换：待开始 → 进行中 → 已完成</p>
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>按重要紧急程度排序 · 点状态字切换进度 · 点「重要」「紧急」调优先级 · 点「备注」写说明</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sorted.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 32, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>还没有任务</div> :
-          sorted.map((t: Task) => (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 16px" }}>
-              <button onClick={() => onCycle(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60 }}>{TASK_LABEL[t.state]}</button>
-              <QuadBadge t={t} />
-              <span style={{ flex: 1, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
-              <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13 }}>转交</button>
-            </div>
-          ))}
+          sorted.map((t: Task) => {
+            const editing = editingNote === t.id;
+            return (
+              <div key={t.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
+                  <button onClick={() => onCycle(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
+                  <button onClick={() => onSetPriority(t, !t.important, t.urgent)} style={chipStyle(t.important, "#1d4ed8")}>重要</button>
+                  <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
+                  <span style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
+                  <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>备注</button>
+                  <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13, flex: "none" }}>转交</button>
+                </div>
+                {t.note && !editing && (
+                  <div style={{ padding: "0 16px 12px 88px", fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {t.note}</div>
+                )}
+                {editing && (
+                  <div style={{ padding: "0 16px 14px 88px" }}>
+                    <textarea value={noteDraft} autoFocus onChange={(e) => setNoteDraft(e.target.value)} rows={2} placeholder="写点备注或需要修改的地方…"
+                      style={{ width: "100%", padding: 10, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
+                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                      <button onClick={() => saveNote(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
+                      <button onClick={() => setEditingNote(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>取消</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
       </div>
     </div>
   );
