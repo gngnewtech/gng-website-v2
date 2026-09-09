@@ -10,7 +10,7 @@ type Me = { id: string; name: string; role: string | null; dept: string | null; 
 const T = {
   zh: {
     brand: "GNG 任务系统", hi: "你好", todayCount: "今日", myTasks: "我的今日任务",
-    hint: "点状态按钮更新进度 · 点「重要」「紧急」调优先级 · 点「备注」写说明",
+    hint: "点状态按钮更新进度（已完成再点会复制一条新任务）· 点「重要」「紧急」调优先级 · 点「备注」写说明",
     addPlaceholder: "添加任务，可一次输入多个（换行或用 1. 2. 3. 编号）…",
     add: "+ 添加", adding: "添加中…",
     empty: "今天还没有任务，在上面添加一个吧 🎉",
@@ -22,7 +22,7 @@ const T = {
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks Today",
-    hint: "Tap status to update · tap Important/Urgent to set priority · tap Note to add details",
+    hint: "Tap status to update (tapping a done task copies a fresh one) · tap Important/Urgent to set priority · tap Note to add details",
     addPlaceholder: "Add tasks — enter several at once (new lines or 1. 2. 3.)…",
     add: "+ Add", adding: "Adding…",
     empty: "No tasks today. Add one above 🎉",
@@ -146,6 +146,15 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
   const q: Quadrant = important && urgent ? 1 : important ? 2 : urgent ? 3 : 4;
 
   const cycle = async (task: Task) => {
+    // 已完成再点 → 复制一条新的「待开始」任务，原任务保持已完成
+    if (task.state === "done") {
+      const temp: Task = { id: "temp-" + Date.now(), name: task.name, state: "todo", done_at: null, important: task.important, urgent: task.urgent, note: null };
+      setTasks((prev) => [...prev, temp]);
+      const ok = await api({ action: "assign", name: task.name, important: task.important, urgent: task.urgent });
+      if (ok) router.refresh();
+      else setTasks((prev) => prev.filter((x) => x.id !== temp.id));
+      return;
+    }
     const order: TaskState[] = ["todo", "doing", "done"];
     const next = order[(order.indexOf(task.state) + 1) % 3];
     const nowIso = new Date().toISOString();
