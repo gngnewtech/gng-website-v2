@@ -33,7 +33,7 @@ function Footer() {
           </p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 12 }}>
-          <Link className="cta" href="/login">任务系统 / Task System</Link>
+          <Link href="/login" style={{ display: "inline-block", background: "#86efac", color: "#14532d", fontWeight: 600, padding: "10px 18px", borderRadius: 8, textDecoration: "none" }}>任务系统 / Task System</Link>
           <div style={{ color: "#64748b" }}>© 2026 GNG New Tech LLC. All rights reserved.</div>
         </div>
       </div>
