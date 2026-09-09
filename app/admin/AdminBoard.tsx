@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
-type Task = { id: string; assignee_id: string; name: string; state: TaskState };
+type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean };
 type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean };
 
 function stats(tasks: Task[]) {
@@ -35,6 +35,29 @@ const TASK_TONE: Record<TaskState, { color: string; bg: string }> = {
   done: { color: "#047857", bg: "#ecfdf5" },
 };
 
+// —— 四象限（重要 × 紧急）——
+type Quadrant = 1 | 2 | 3 | 4;
+function quadrantOf(t: Task): Quadrant {
+  if (t.important && t.urgent) return 1;
+  if (t.important) return 2;
+  if (t.urgent) return 3;
+  return 4;
+}
+const QUAD_META: Record<Quadrant, { label: string; color: string; bg: string; rank: number }> = {
+  1: { label: "重要紧急", color: "#be123c", bg: "#fff1f2", rank: 0 },
+  2: { label: "重要不急", color: "#1d4ed8", bg: "#eff6ff", rank: 1 },
+  3: { label: "紧急不重要", color: "#c2410c", bg: "#fff7ed", rank: 2 },
+  4: { label: "一般", color: "#64748b", bg: "#f1f5f9", rank: 3 },
+};
+// 排序：先按重要，后按紧急（象限一 → 二 → 三 → 四）
+function byPriority(a: Task, b: Task) {
+  return QUAD_META[quadrantOf(a)].rank - QUAD_META[quadrantOf(b)].rank;
+}
+function QuadBadge({ t }: { t: Task }) {
+  const q = QUAD_META[quadrantOf(t)];
+  return <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: q.color, background: q.bg, whiteSpace: "nowrap" }}>{q.label}</span>;
+}
+
 async function api(body: any) {
   const res = await fetch("/api/tasks", {
     method: "POST",
@@ -64,9 +87,9 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
 
   const filtered = employees.filter((e) => e.name.includes(query) || (e.role ?? "").includes(query) || (e.dept ?? "").includes(query));
 
-  const doAssign = async (empId: string, name: string) => {
+  const doAssign = async (empId: string, name: string, important: boolean, urgent: boolean) => {
     setBusy(true);
-    await api({ action: "assign", assignee_id: empId, name });
+    await api({ action: "assign", assignee_id: empId, name, important, urgent });
     setBusy(false); setAssignOpen(false); router.refresh();
   };
   const doTransfer = async (taskId: string, toId: string) => {
@@ -129,7 +152,7 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {filtered.map((emp) => {
                 const t = tasksOf(emp.id); const s = stats(t); const m = META[statusOf(emp, t)];
-                const pending = t.filter((x) => x.state !== "done");
+                const pending = t.filter((x) => x.state !== "done").sort(byPriority);
                 return (
                   <button key={emp.id} onClick={() => setSelectedId(emp.id)} style={{ ...rowStyle, alignItems: "stretch", flexDirection: "column", gap: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 16, width: "100%" }}>
@@ -153,6 +176,7 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
                       <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 60 }}>
                         {pending.map((x) => (
                           <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                            <QuadBadge t={x} />
                             <span style={{ color: "#334155" }}>{x.name}</span>
                             <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: TASK_TONE[x.state].color, background: TASK_TONE[x.state].bg }}>{TASK_LABEL[x.state]}</span>
                           </div>
@@ -178,6 +202,7 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
 
 function Detail({ emp, tasks, onBack, onCycle, onAssignHere, onTransfer, bar }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
+  const sorted = [...tasks].sort(byPriority);
   return (
     <div>
       <button onClick={onBack} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", marginBottom: 16 }}>← 返回列表</button>
@@ -200,12 +225,13 @@ function Detail({ emp, tasks, onBack, onCycle, onAssignHere, onTransfer, bar }: 
         <h4 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: 0 }}>任务清单</h4>
         <button onClick={onAssignHere} style={btnPrimary}>+ 给 {emp.name} 派任务</button>
       </div>
-      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>点左侧状态字切换：待开始 → 进行中 → 已完成</p>
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>按重要紧急程度排序 · 点左侧状态字切换：待开始 → 进行中 → 已完成</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {tasks.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 32, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>还没有任务</div> :
-          tasks.map((t: Task) => (
+        {sorted.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 32, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>还没有任务</div> :
+          sorted.map((t: Task) => (
             <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 16px" }}>
               <button onClick={() => onCycle(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60 }}>{TASK_LABEL[t.state]}</button>
+              <QuadBadge t={t} />
               <span style={{ flex: 1, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
               <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13 }}>转交</button>
             </div>
@@ -218,6 +244,9 @@ function Detail({ emp, tasks, onBack, onCycle, onAssignHere, onTransfer, bar }: 
 function AssignModal({ employees, defaultId, busy, onClose, onAssign }: any) {
   const [empId, setEmpId] = useState(defaultId ?? employees[0]?.id);
   const [name, setName] = useState("");
+  const [important, setImportant] = useState(false);
+  const [urgent, setUrgent] = useState(false);
+  const q: Quadrant = important && urgent ? 1 : important ? 2 : urgent ? 3 : 4;
   return (
     <div style={overlay} onClick={onClose}>
       <div style={modal} onClick={(e) => e.stopPropagation()}>
@@ -230,9 +259,18 @@ function AssignModal({ employees, defaultId, busy, onClose, onAssign }: any) {
         <div style={{ height: 16 }} />
         <label style={lbl}>任务内容</label>
         <input value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="例如：整理销售数据" style={field} />
+        <div style={{ height: 16 }} />
+        <label style={lbl}>优先级（四象限）</label>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button type="button" onClick={() => setImportant((v) => !v)} style={toggleStyle(important, "#1d4ed8")}>{important ? "✓ " : ""}重要</button>
+          <button type="button" onClick={() => setUrgent((v) => !v)} style={toggleStyle(urgent, "#be123c")}>{urgent ? "✓ " : ""}紧急</button>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
+          归入象限：<span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color: QUAD_META[q].color, background: QUAD_META[q].bg }}>{QUAD_META[q].label}</span>
+        </div>
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
-          <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim())} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
+          <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim(), important, urgent)} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
         </div>
       </div>
     </div>
@@ -264,6 +302,7 @@ const rowStyle: React.CSSProperties = { width: "100%", textAlign: "left", backgr
 const pill: React.CSSProperties = { fontSize: 12, padding: "3px 8px", borderRadius: 999, whiteSpace: "nowrap", border: "1px solid" };
 const btnPrimary: React.CSSProperties = { background: "#0f172a", color: "#fff", border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
 const btnGhost: React.CSSProperties = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 12px", fontSize: 14, cursor: "pointer" };
+const toggleStyle = (on: boolean, c: string): React.CSSProperties => ({ flex: 1, padding: "9px 12px", borderRadius: 8, fontSize: 14, cursor: "pointer", border: `1px solid ${on ? c : "#cbd5e1"}`, background: on ? c : "#fff", color: on ? "#fff" : "#475569", fontWeight: on ? 600 : 400 });
 const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(15,23,42,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 };
 const modal: React.CSSProperties = { width: "100%", maxWidth: 420, background: "#fff", borderRadius: 14, padding: 24 };
 const field: React.CSSProperties = { width: "100%", border: "1px solid #cbd5e1", borderRadius: 8, padding: "10px 12px", fontSize: 15, outline: "none", boxSizing: "border-box" };
