@@ -2,6 +2,7 @@ import "./globals.css";
 import type { ReactNode } from "react";
 import Link from "next/link";
 
+
 function Header() {
   return (
     <header className="header">
