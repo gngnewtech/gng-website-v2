@@ -7,30 +7,16 @@ function Header() {
     <header className="header">
       <div className="container header-inner">
         <Link href="/" className="brand">
-          <img
-            src="/gng-logo-final.png"
-            alt="GNG New Tech LLC"
-            className="brand-logo"
-          />
+          <img src="/gng-logo-final.png" alt="GNG New Tech LLC" className="brand-logo" />
         </Link>
-
         <nav className="nav">
           <Link href="/">Home</Link>
           <Link href="/about">About</Link>
           <Link href="/products">Products</Link>
           <Link href="/contact">Contact</Link>
-          
-            href="https://qiye.aliyun.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Webmail
-          </a>
+          <a href="https://qiye.aliyun.com/" target="_blank" rel="noopener noreferrer">Webmail</a>
         </nav>
-
-        <Link className="cta" href="/contact">
-          Request Quote
-        </Link>
+        <Link className="cta" href="/contact">Request Quote</Link>
       </div>
     </header>
   );
@@ -43,44 +29,19 @@ function Footer() {
         <div>
           <div style={{ fontWeight: 700 }}>GNG NEW TECH LLC</div>
           <p>
-            International City, Dubai, UAE ·{" "}
-            <a href="mailto:sales@gngnt.com">sales@gngnt.com</a> ·{" "}
-            <a href="tel:+971586009788">Call</a> ·{" "}
-            
-              href="https://wa.me/971586009788"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              WhatsApp
-            </a>
+            International City, Dubai, UAE · <a href="mailto:sales@gngnt.com">sales@gngnt.com</a> · <a href="tel:+971586009788">Call</a> · <a href="https://wa.me/971586009788" target="_blank" rel="noopener noreferrer">WhatsApp</a>
           </p>
         </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-start",
-            gap: 12,
-          }}
-        >
-          <Link className="cta" href="/login">
-            任务系统 / Task System
-          </Link>
-          <div style={{ color: "#64748b" }}>
-            © 2026 GNG New Tech LLC. All rights reserved.
-          </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 12 }}>
+          <Link className="cta" href="/login">任务系统 / Task System</Link>
+          <div style={{ color: "#64748b" }}>© 2026 GNG New Tech LLC. All rights reserved.</div>
         </div>
       </div>
     </footer>
   );
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
