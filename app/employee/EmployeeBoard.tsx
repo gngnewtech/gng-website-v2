@@ -11,7 +11,8 @@ const T = {
   zh: {
     brand: "GNG 任务系统", hi: "你好", todayCount: "今日", myTasks: "我的今日任务",
     hint: "点左侧状态按钮更新进度：待开始 → 进行中 → 已完成",
-    addPlaceholder: "添加一个新任务…", add: "+ 添加", adding: "添加中…",
+    addPlaceholder: "添加任务，可一次输入多个（换行或用 1. 2. 3. 编号）…",
+    add: "+ 添加", adding: "添加中…",
     empty: "今天还没有任务，在上面添加一个吧 🎉",
     history: "历史任务", doneAt: "完成", logout: "退出",
     todo: "待开始", doing: "进行中", done: "已完成",
@@ -19,7 +20,8 @@ const T = {
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks Today",
     hint: "Tap the status button to update: To-do → In progress → Done",
-    addPlaceholder: "Add a new task…", add: "+ Add", adding: "Adding…",
+    addPlaceholder: "Add tasks — enter several at once (new lines or 1. 2. 3.)…",
+    add: "+ Add", adding: "Adding…",
     empty: "No tasks today. Add one above 🎉",
     history: "Task History", doneAt: "done", logout: "Log out",
     todo: "To-do", doing: "In progress", done: "Done",
@@ -38,19 +40,33 @@ function isToday(iso: string | null) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
+// 把一段输入拆成多个任务名：先按换行分，再按 1. 2. 3. / 1、/ 1) 等编号分；去掉开头编号
+function splitTasks(input: string): string[] {
+  let parts = input.split(/\r?\n/);
+  // 对每一行，再尝试按行内编号切分（如 "1.a 2.b 3.c" 写在一行）
+  const out: string[] = [];
+  for (const line of parts) {
+    // 在 "数字 + . 、) 」" 这种编号前断开
+    const segs = line.split(/(?=(?:^|\s)\d+\s*[.、)]\s*)/g);
+    for (const seg of segs) out.push(seg);
+  }
+  return out
+    .map((s) => s.replace(/^\s*\d+\s*[.、)]\s*/, "").trim()) // 去掉开头编号
+    .filter((s) => s.length > 0);
+}
+
 async function api(body: any) {
   const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   return res.ok;
 }
 
-// 手机适配的 CSS（用类名，配合 <style> 注入）
 const CSS = `
 .emp * { box-sizing: border-box; }
 .emp-wrap { max-width: 720px; margin: 0 auto; padding: 24px; }
 .emp-head-in { max-width: 720px; margin: 0 auto; padding: 0 16px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
 .emp-profile { display: flex; align-items: center; gap: 16px; }
-.emp-add { display: flex; gap: 8px; margin-bottom: 16px; }
-.emp-add input { flex: 1; }
+.emp-add { display: flex; gap: 8px; margin-bottom: 16px; align-items: flex-start; }
+.emp-add textarea { flex: 1; }
 .emp-task { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; }
 .emp-task-name { flex: 1; font-size: 15px; word-break: break-word; }
 @media (max-width: 560px) {
@@ -58,7 +74,7 @@ const CSS = `
   .emp-profile { flex-wrap: wrap; }
   .emp-profile .emp-pct { width: 100%; text-align: left; margin-top: 4px; }
   .emp-add { flex-direction: column; }
-  .emp-add button { width: 100%; padding: 12px !important; }
+  .emp-add button { width: 100%; padding: 12px !important; height: auto !important; }
   .emp-task { flex-wrap: wrap; }
   .emp-task .emp-hist-date { width: 100%; padding-left: 80px; }
 }
@@ -102,15 +118,22 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
   };
 
   const addTask = async () => {
-    const name = newTask.trim();
-    if (!name) return;
-    setBusy(true); setNewTask("");
-    const tempId = "temp-" + Date.now();
-    setTasks((prev) => [...prev, { id: tempId, name, state: "todo", done_at: null }]);
-    const ok = await api({ action: "assign", name });
+    const names = splitTasks(newTask);
+    if (names.length === 0) return;
+    setBusy(true);
+    setNewTask("");
+    // 立即显示（乐观更新）
+    const temps = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo" as TaskState, done_at: null }));
+    setTasks((prev) => [...prev, ...temps]);
+    // 逐个提交
+    let allOk = true;
+    for (const name of names) {
+      const ok = await api({ action: "assign", name });
+      if (!ok) allOk = false;
+    }
     setBusy(false);
-    if (ok) router.refresh();
-    else { setTasks((prev) => prev.filter((x) => x.id !== tempId)); setNewTask(name); }
+    if (allOk) router.refresh();
+    else { setNewTask(names.join("\n")); router.refresh(); }
   };
 
   const logout = async () => { await fetch("/api/logout", { method: "POST" }); router.push("/login"); router.refresh(); };
@@ -153,8 +176,8 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
         <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 14px" }}>{t.hint}</p>
 
         <div className="emp-add">
-          <input value={newTask} onChange={(e) => setNewTask(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !busy && addTask()} placeholder={t.addPlaceholder}
-            style={{ padding: "12px", border: "1px solid #cbd5e1", borderRadius: 8, outline: "none", fontSize: 16 }} />
+          <textarea value={newTask} onChange={(e) => setNewTask(e.target.value)} placeholder={t.addPlaceholder} rows={3}
+            style={{ padding: "12px", border: "1px solid #cbd5e1", borderRadius: 8, outline: "none", fontSize: 16, resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }} />
           <button onClick={addTask} disabled={busy || !newTask.trim()}
             style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 8, padding: "0 18px", height: 46, fontSize: 15, fontWeight: 500, cursor: "pointer", opacity: busy || !newTask.trim() ? 0.5 : 1, whiteSpace: "nowrap" }}>
             {busy ? t.adding : t.add}
