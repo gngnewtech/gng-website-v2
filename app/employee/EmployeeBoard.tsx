@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
@@ -14,8 +14,20 @@ const TASK_TONE: Record<TaskState, { color: string; bg: string }> = {
   done: { color: "#047857", bg: "#ecfdf5" },
 };
 
+async function api(body: any) {
+  const res = await fetch("/api/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.ok;
+}
+
 export default function EmployeeBoard({ me, tasks }: { me: Me; tasks: Task[] }) {
   const router = useRouter();
+  const [newTask, setNewTask] = useState("");
+  const [busy, setBusy] = useState(false);
+
   const total = tasks.length;
   const done = tasks.filter((t) => t.state === "done").length;
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
@@ -23,11 +35,17 @@ export default function EmployeeBoard({ me, tasks }: { me: Me; tasks: Task[] }) 
   const cycle = async (task: Task) => {
     const order: TaskState[] = ["todo", "doing", "done"];
     const next = order[(order.indexOf(task.state) + 1) % 3];
-    await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "setState", task_id: task.id, state: next }),
-    });
+    await api({ action: "setState", task_id: task.id, state: next });
+    router.refresh();
+  };
+
+  const addTask = async () => {
+    if (!newTask.trim()) return;
+    setBusy(true);
+    // 员工建任务：后端会强制建给自己，assignee_id 不用传
+    await api({ action: "assign", name: newTask.trim() });
+    setBusy(false);
+    setNewTask("");
     router.refresh();
   };
 
@@ -61,10 +79,28 @@ export default function EmployeeBoard({ me, tasks }: { me: Me; tasks: Task[] }) 
         <h3 style={{ fontSize: 15, fontWeight: 600, color: "#475569", margin: "0 0 6px" }}>我的今日任务</h3>
         <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 14px" }}>点左侧状态按钮更新进度：待开始 → 进行中 → 已完成</p>
 
+        {/* 自己添加任务 */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <input
+            value={newTask}
+            onChange={(e) => setNewTask(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !busy && addTask()}
+            placeholder="添加一个新任务…"
+            style={{ flex: 1, padding: "11px 12px", border: "1px solid #cbd5e1", borderRadius: 8, outline: "none", fontSize: 15, boxSizing: "border-box" }}
+          />
+          <button
+            onClick={addTask}
+            disabled={busy || !newTask.trim()}
+            style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 8, padding: "0 18px", fontSize: 14, fontWeight: 500, cursor: "pointer", opacity: busy || !newTask.trim() ? 0.5 : 1, whiteSpace: "nowrap" }}
+          >
+            {busy ? "添加中…" : "+ 添加"}
+          </button>
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {tasks.length === 0 ? (
             <div style={{ textAlign: "center", color: "#94a3b8", padding: 48, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 12 }}>
-              今天还没有分配给你的任务 🎉
+              还没有任务，在上面添加一个吧 🎉
             </div>
           ) : (
             tasks.map((t) => (
