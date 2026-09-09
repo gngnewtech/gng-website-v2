@@ -4,13 +4,13 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
-type Task = { id: string; name: string; state: TaskState; done_at: string | null; important: boolean; urgent: boolean };
+type Task = { id: string; name: string; state: TaskState; done_at: string | null; important: boolean; urgent: boolean; note: string | null };
 type Me = { id: string; name: string; role: string | null; dept: string | null; email: string };
 
 const T = {
   zh: {
     brand: "GNG 任务系统", hi: "你好", todayCount: "今日", myTasks: "我的今日任务",
-    hint: "点左侧状态按钮更新进度：待开始 → 进行中 → 已完成",
+    hint: "点状态按钮更新进度 · 点「重要」「紧急」调优先级 · 点「备注」写说明",
     addPlaceholder: "添加任务，可一次输入多个（换行或用 1. 2. 3. 编号）…",
     add: "+ 添加", adding: "添加中…",
     empty: "今天还没有任务，在上面添加一个吧 🎉",
@@ -18,10 +18,11 @@ const T = {
     todo: "待开始", doing: "进行中", done: "已完成",
     priority: "优先级", important: "重要", urgent: "紧急",
     q1: "重要紧急", q2: "重要不急", q3: "紧急不重要", q4: "一般",
+    note: "备注", notePlaceholder: "写点备注或需要修改的地方…", save: "保存", cancel: "取消",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks Today",
-    hint: "Tap the status button to update: To-do → In progress → Done",
+    hint: "Tap status to update · tap Important/Urgent to set priority · tap Note to add details",
     addPlaceholder: "Add tasks — enter several at once (new lines or 1. 2. 3.)…",
     add: "+ Add", adding: "Adding…",
     empty: "No tasks today. Add one above 🎉",
@@ -29,6 +30,7 @@ const T = {
     todo: "To-do", doing: "In progress", done: "Done",
     priority: "Priority", important: "Important", urgent: "Urgent",
     q1: "Important & Urgent", q2: "Important", q3: "Urgent", q4: "Normal",
+    note: "Note", notePlaceholder: "Add a note or what needs changing…", save: "Save", cancel: "Cancel",
   },
 };
 
@@ -55,10 +57,6 @@ const QUAD_META: Record<Quadrant, { color: string; bg: string; rank: number; key
 // 排序：先按重要，后按紧急（象限一 → 二 → 三 → 四）
 function byPriority(a: Task, b: Task) {
   return QUAD_META[quadrantOf(a)].rank - QUAD_META[quadrantOf(b)].rank;
-}
-function QuadBadge({ task, lang }: { task: Task; lang: "zh" | "en" }) {
-  const m = QUAD_META[quadrantOf(task)];
-  return <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: m.color, background: m.bg, whiteSpace: "nowrap", flex: "none" }}>{T[lang][m.key]}</span>;
 }
 
 function isToday(iso: string | null) {
@@ -95,20 +93,23 @@ const CSS = `
 .emp-add { display: flex; gap: 8px; margin-bottom: 12px; align-items: flex-start; }
 .emp-add textarea { flex: 1; }
 .emp-prio { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-.emp-task { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; }
-.emp-task-name { flex: 1; font-size: 15px; word-break: break-word; }
+.emp-task { display: flex; align-items: center; gap: 10px; padding: 14px 16px; flex-wrap: wrap; }
+.emp-task-name { flex: 1; min-width: 120px; font-size: 15px; word-break: break-word; }
+.emp-note { padding: 0 16px 12px 92px; }
 @media (max-width: 560px) {
   .emp-wrap { padding: 16px; }
   .emp-profile { flex-wrap: wrap; }
   .emp-profile .emp-pct { width: 100%; text-align: left; margin-top: 4px; }
   .emp-add { flex-direction: column; }
   .emp-add button { width: 100%; padding: 12px !important; height: auto !important; }
-  .emp-task { flex-wrap: wrap; }
-  .emp-task .emp-hist-date { width: 100%; padding-left: 80px; }
+  .emp-note { padding-left: 16px; }
+  .emp-task .emp-hist-date { width: 100%; padding-left: 0; }
 }
 `;
 
 const toggleStyle = (on: boolean, c: string): React.CSSProperties => ({ padding: "7px 14px", borderRadius: 8, fontSize: 14, cursor: "pointer", border: `1px solid ${on ? c : "#cbd5e1"}`, background: on ? c : "#fff", color: on ? "#fff" : "#475569", fontWeight: on ? 600 : 400 });
+const chipStyle = (on: boolean, c: string): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${on ? c : "#e2e8f0"}`, background: on ? c : "#fff", color: on ? "#fff" : "#94a3b8", fontWeight: on ? 600 : 400, whiteSpace: "nowrap", flex: "none" });
+const noteBtnStyle = (has: boolean): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${has ? "#0f172a" : "#e2e8f0"}`, background: has ? "#0f172a" : "#fff", color: has ? "#fff" : "#94a3b8", whiteSpace: "nowrap", flex: "none" });
 
 export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tasks: Task[] }) {
   const router = useRouter();
@@ -118,6 +119,8 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
   const [urgent, setUrgent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [editingNote, setEditingNote] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
   const [lang, setLang] = useState<"zh" | "en">("zh");
   useEffect(() => {
     const l = (navigator.language || "zh").toLowerCase();
@@ -151,13 +154,28 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
   };
 
+  const setPriority = async (task: Task, imp: boolean, urg: boolean) => {
+    setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, important: imp, urgent: urg } : x)));
+    const ok = await api({ action: "setPriority", task_id: task.id, important: imp, urgent: urg });
+    if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
+  };
+
+  const openNote = (task: Task) => { setEditingNote(task.id); setNoteDraft(task.note ?? ""); };
+  const saveNote = async (task: Task) => {
+    const note = noteDraft.trim();
+    setEditingNote(null);
+    setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, note: note || null } : x)));
+    const ok = await api({ action: "setNote", task_id: task.id, note });
+    if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
+  };
+
   const addTask = async () => {
     const names = splitTasks(newTask);
     if (names.length === 0) return;
     setBusy(true);
     setNewTask("");
     // 立即显示（乐观更新）
-    const temps = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo" as TaskState, done_at: null, important, urgent }));
+    const temps = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo" as TaskState, done_at: null, important, urgent, note: null }));
     setTasks((prev) => [...prev, ...temps]);
     // 逐个提交
     let allOk = true;
@@ -172,14 +190,38 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
 
   const logout = async () => { await fetch("/api/logout", { method: "POST" }); router.push("/login"); router.refresh(); };
 
-  const taskRow = (x: Task, history = false) => (
-    <div key={x.id} className="emp-task">
-      <button onClick={() => cycle(x)} style={{ background: TASK_TONE[x.state].bg, color: TASK_TONE[x.state].color, border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 13, minWidth: 68, fontWeight: 500 }}>{t[x.state]}</button>
-      <QuadBadge task={x} lang={lang} />
-      <span className="emp-task-name" style={{ textDecoration: x.state === "done" ? "line-through" : "none", color: x.state === "done" ? "#94a3b8" : "#334155" }}>{x.name}</span>
-      {history && <span className="emp-hist-date" style={{ fontSize: 12, color: "#94a3b8" }}>{fmtDate(x.done_at)} {t.doneAt}</span>}
-    </div>
-  );
+  const taskRow = (x: Task, history = false) => {
+    const editing = editingNote === x.id;
+    return (
+      <div key={x.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+        <div className="emp-task">
+          <button onClick={() => cycle(x)} style={{ background: TASK_TONE[x.state].bg, color: TASK_TONE[x.state].color, border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 13, minWidth: 68, fontWeight: 500, flex: "none" }}>{t[x.state]}</button>
+          <span className="emp-task-name" style={{ textDecoration: x.state === "done" ? "line-through" : "none", color: x.state === "done" ? "#94a3b8" : "#334155" }}>{x.name}</span>
+          {!history && (
+            <>
+              <button onClick={() => setPriority(x, !x.important, x.urgent)} style={chipStyle(x.important, "#1d4ed8")}>{t.important}</button>
+              <button onClick={() => setPriority(x, x.important, !x.urgent)} style={chipStyle(x.urgent, "#be123c")}>{t.urgent}</button>
+              <button onClick={() => (editing ? setEditingNote(null) : openNote(x))} style={noteBtnStyle(!!x.note)}>{t.note}</button>
+            </>
+          )}
+          {history && <span className="emp-hist-date" style={{ fontSize: 12, color: "#94a3b8", flex: "none" }}>{fmtDate(x.done_at)} {t.doneAt}</span>}
+        </div>
+        {x.note && !editing && (
+          <div className="emp-note" style={{ fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {x.note}</div>
+        )}
+        {editing && (
+          <div className="emp-note">
+            <textarea value={noteDraft} autoFocus onChange={(e) => setNoteDraft(e.target.value)} rows={2} placeholder={t.notePlaceholder}
+              style={{ width: "100%", padding: 10, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button onClick={() => saveNote(x)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>{t.save}</button>
+              <button onClick={() => setEditingNote(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>{t.cancel}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="emp" style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: 'system-ui,-apple-system,"PingFang SC",sans-serif', color: "#1e293b" }}>
