@@ -22,13 +22,13 @@ export async function POST(req: Request) {
   const { action } = body;
 
   if (action === "assign") {
-    let { assignee_id, name } = body;
+    let { assignee_id, name, important, urgent } = body;
     if (!name?.trim()) return NextResponse.json({ error: "缺少任务内容" }, { status: 400 });
     if (!me.is_admin) assignee_id = me.id;
     if (!assignee_id) return NextResponse.json({ error: "缺少员工" }, { status: 400 });
     const { error: e } = await supabase
       .from("tasks")
-      .insert({ assignee_id, name: name.trim(), state: "todo" });
+      .insert({ assignee_id, name: name.trim(), state: "todo", important: !!important, urgent: !!urgent });
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
@@ -53,6 +53,27 @@ export async function POST(req: Request) {
     const { error: e } = await supabase
       .from("tasks")
       .update(patch)
+      .eq("id", task_id);
+    if (e) return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "setPriority") {
+    const { task_id, important, urgent } = body;
+    const { error: e } = await supabase
+      .from("tasks")
+      .update({ important: !!important, urgent: !!urgent })
+      .eq("id", task_id);
+    if (e) return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "setNote") {
+    const { task_id, note } = body;
+    const clean = (note ?? "").toString().trim();
+    const { error: e } = await supabase
+      .from("tasks")
+      .update({ note: clean.length ? clean : null })
       .eq("id", task_id);
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
     return NextResponse.json({ ok: true });
