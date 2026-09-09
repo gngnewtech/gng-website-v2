@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
-type Task = { id: string; name: string; state: TaskState; done_at: string | null };
+type Task = { id: string; name: string; state: TaskState; done_at: string | null; important: boolean; urgent: boolean };
 type Me = { id: string; name: string; role: string | null; dept: string | null; email: string };
 
 const T = {
@@ -16,6 +16,8 @@ const T = {
     empty: "今天还没有任务，在上面添加一个吧 🎉",
     history: "历史任务", doneAt: "完成", logout: "退出",
     todo: "待开始", doing: "进行中", done: "已完成",
+    priority: "优先级", important: "重要", urgent: "紧急",
+    q1: "重要紧急", q2: "重要不急", q3: "紧急不重要", q4: "一般",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks Today",
@@ -25,6 +27,8 @@ const T = {
     empty: "No tasks today. Add one above 🎉",
     history: "Task History", doneAt: "done", logout: "Log out",
     todo: "To-do", doing: "In progress", done: "Done",
+    priority: "Priority", important: "Important", urgent: "Urgent",
+    q1: "Important & Urgent", q2: "Important", q3: "Urgent", q4: "Normal",
   },
 };
 
@@ -33,6 +37,29 @@ const TASK_TONE: Record<TaskState, { color: string; bg: string }> = {
   doing: { color: "#b45309", bg: "#fffbeb" },
   done: { color: "#047857", bg: "#ecfdf5" },
 };
+
+// —— 四象限（重要 × 紧急）——
+type Quadrant = 1 | 2 | 3 | 4;
+function quadrantOf(x: Task): Quadrant {
+  if (x.important && x.urgent) return 1;
+  if (x.important) return 2;
+  if (x.urgent) return 3;
+  return 4;
+}
+const QUAD_META: Record<Quadrant, { color: string; bg: string; rank: number; key: "q1" | "q2" | "q3" | "q4" }> = {
+  1: { color: "#be123c", bg: "#fff1f2", rank: 0, key: "q1" },
+  2: { color: "#1d4ed8", bg: "#eff6ff", rank: 1, key: "q2" },
+  3: { color: "#c2410c", bg: "#fff7ed", rank: 2, key: "q3" },
+  4: { color: "#64748b", bg: "#f1f5f9", rank: 3, key: "q4" },
+};
+// 排序：先按重要，后按紧急（象限一 → 二 → 三 → 四）
+function byPriority(a: Task, b: Task) {
+  return QUAD_META[quadrantOf(a)].rank - QUAD_META[quadrantOf(b)].rank;
+}
+function QuadBadge({ task, lang }: { task: Task; lang: "zh" | "en" }) {
+  const m = QUAD_META[quadrantOf(task)];
+  return <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: m.color, background: m.bg, whiteSpace: "nowrap", flex: "none" }}>{T[lang][m.key]}</span>;
+}
 
 function isToday(iso: string | null) {
   if (!iso) return false;
@@ -65,8 +92,9 @@ const CSS = `
 .emp-wrap { max-width: 720px; margin: 0 auto; padding: 24px; }
 .emp-head-in { max-width: 720px; margin: 0 auto; padding: 0 16px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
 .emp-profile { display: flex; align-items: center; gap: 16px; }
-.emp-add { display: flex; gap: 8px; margin-bottom: 16px; align-items: flex-start; }
+.emp-add { display: flex; gap: 8px; margin-bottom: 12px; align-items: flex-start; }
 .emp-add textarea { flex: 1; }
+.emp-prio { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .emp-task { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; }
 .emp-task-name { flex: 1; font-size: 15px; word-break: break-word; }
 @media (max-width: 560px) {
@@ -80,10 +108,14 @@ const CSS = `
 }
 `;
 
+const toggleStyle = (on: boolean, c: string): React.CSSProperties => ({ padding: "7px 14px", borderRadius: 8, fontSize: 14, cursor: "pointer", border: `1px solid ${on ? c : "#cbd5e1"}`, background: on ? c : "#fff", color: on ? "#fff" : "#475569", fontWeight: on ? 600 : 400 });
+
 export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tasks: Task[] }) {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [newTask, setNewTask] = useState("");
+  const [important, setImportant] = useState(false);
+  const [urgent, setUrgent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [lang, setLang] = useState<"zh" | "en">("zh");
@@ -101,12 +133,14 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
     return lang === "zh" ? `${d.getMonth() + 1}月${d.getDate()}日` : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  const todayTasks = tasks.filter((x) => x.state !== "done" || isToday(x.done_at));
+  const todayTasks = tasks.filter((x) => x.state !== "done" || isToday(x.done_at)).sort(byPriority);
   const historyTasks = tasks.filter((x) => x.state === "done" && !isToday(x.done_at)).sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
 
   const total = todayTasks.length;
   const done = todayTasks.filter((x) => x.state === "done").length;
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+
+  const q: Quadrant = important && urgent ? 1 : important ? 2 : urgent ? 3 : 4;
 
   const cycle = async (task: Task) => {
     const order: TaskState[] = ["todo", "doing", "done"];
@@ -123,12 +157,12 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
     setBusy(true);
     setNewTask("");
     // 立即显示（乐观更新）
-    const temps = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo" as TaskState, done_at: null }));
+    const temps = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo" as TaskState, done_at: null, important, urgent }));
     setTasks((prev) => [...prev, ...temps]);
     // 逐个提交
     let allOk = true;
     for (const name of names) {
-      const ok = await api({ action: "assign", name });
+      const ok = await api({ action: "assign", name, important, urgent });
       if (!ok) allOk = false;
     }
     setBusy(false);
@@ -141,6 +175,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
   const taskRow = (x: Task, history = false) => (
     <div key={x.id} className="emp-task">
       <button onClick={() => cycle(x)} style={{ background: TASK_TONE[x.state].bg, color: TASK_TONE[x.state].color, border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 13, minWidth: 68, fontWeight: 500 }}>{t[x.state]}</button>
+      <QuadBadge task={x} lang={lang} />
       <span className="emp-task-name" style={{ textDecoration: x.state === "done" ? "line-through" : "none", color: x.state === "done" ? "#94a3b8" : "#334155" }}>{x.name}</span>
       {history && <span className="emp-hist-date" style={{ fontSize: 12, color: "#94a3b8" }}>{fmtDate(x.done_at)} {t.doneAt}</span>}
     </div>
@@ -182,6 +217,14 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
             style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 8, padding: "0 18px", height: 46, fontSize: 15, fontWeight: 500, cursor: "pointer", opacity: busy || !newTask.trim() ? 0.5 : 1, whiteSpace: "nowrap" }}>
             {busy ? t.adding : t.add}
           </button>
+        </div>
+
+        <div className="emp-prio">
+          <span style={{ fontSize: 13, color: "#64748b" }}>{t.priority}：</span>
+          <button type="button" onClick={() => setImportant((v) => !v)} style={toggleStyle(important, "#1d4ed8")}>{important ? "✓ " : ""}{t.important}</button>
+          <button type="button" onClick={() => setUrgent((v) => !v)} style={toggleStyle(urgent, "#be123c")}>{urgent ? "✓ " : ""}{t.urgent}</button>
+          <span style={{ fontSize: 12, color: "#94a3b8" }}>→</span>
+          <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color: QUAD_META[q].color, background: QUAD_META[q].bg }}>{t[QUAD_META[q].key]}</span>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
