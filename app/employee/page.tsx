@@ -9,7 +9,6 @@ export default async function EmployeePage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // 找到这个登录用户对应的员工档案
   const { data: me } = await supabase
     .from("employees")
     .select("id, name, role, dept, email, is_admin")
@@ -17,12 +16,11 @@ export default async function EmployeePage() {
     .maybeSingle();
 
   if (!me) redirect("/login");
-  if (me.is_admin) redirect("/admin"); // 管理员走后台
+  if (me.is_admin) redirect("/admin");
 
-  // 只读分配给自己的任务
   const { data: tasks } = await supabase
     .from("tasks")
-    .select("id, assignee_id, name, state, created_at")
+    .select("id, assignee_id, name, state, created_at, done_at")
     .eq("assignee_id", me.id)
     .order("created_at", { ascending: true });
 
