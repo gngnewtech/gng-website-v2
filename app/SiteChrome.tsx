@@ -1,0 +1,58 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
+
+function Header() {
+  return (
+    <header className="header">
+      <div className="container header-inner">
+        <Link href="/" className="brand">
+          <img src="/gng-logo-final.png" alt="GNG New Tech LLC" className="brand-logo" />
+        </Link>
+        <nav className="nav">
+          <Link href="/">Home</Link>
+          <Link href="/about">About</Link>
+          <Link href="/products">Products</Link>
+          <Link href="/contact">Contact</Link>
+          <a href="https://qiye.aliyun.com/" target="_blank" rel="noopener noreferrer">Webmail</a>
+        </nav>
+        <Link className="cta" href="/contact">Request Quote</Link>
+      </div>
+    </header>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="footer">
+      <div className="container footer-inner">
+        <div>
+          <div style={{ fontWeight: 700 }}>GNG NEW TECH LLC</div>
+          <p>
+            International City, Dubai, UAE · <a href="mailto:sales@gngnt.com">sales@gngnt.com</a> · <a href="tel:+971586009788">Call</a> · <a href="https://wa.me/971586009788" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+          </p>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 12 }}>
+          <Link href="/login" style={{ display: "inline-block", background: "#86efac", color: "#14532d", fontWeight: 600, padding: "10px 18px", borderRadius: 8, textDecoration: "none" }}>任务系统 / Task System</Link>
+          <div style={{ color: "#64748b" }}>© 2026 GNG New Tech LLC. All rights reserved.</div>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+export default function SiteChrome({ children }: { children: ReactNode }) {
+  const pathname = usePathname() || "";
+  // 任务系统相关页面：不显示网站头尾
+  const bare = ["/login", "/admin", "/employee"].some((p) => pathname.startsWith(p));
+  if (bare) return <>{children}</>;
+  return (
+    <>
+      <Header />
+      {children}
+      <Footer />
+    </>
+  );
+}
