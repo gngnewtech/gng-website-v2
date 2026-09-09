@@ -150,12 +150,12 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
                       </div>
                     </div>
                     {pending.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, paddingLeft: 60 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 60 }}>
                         {pending.map((x) => (
-                          <span key={x.id} style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 999, color: TASK_TONE[x.state].color, background: TASK_TONE[x.state].bg }}>{TASK_LABEL[x.state]}</span>
-                            {x.name}
-                          </span>
+                          <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                            <span style={{ color: "#334155" }}>{x.name}</span>
+                            <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: TASK_TONE[x.state].color, background: TASK_TONE[x.state].bg }}>{TASK_LABEL[x.state]}</span>
+                          </div>
                         ))}
                       </div>
                     )}
