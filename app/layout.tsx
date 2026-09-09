@@ -1,3 +1,41 @@
+import "./globals.css";
+import type { ReactNode } from "react";
+import Link from "next/link";
+
+function Header() {
+  return (
+    <header className="header">
+      <div className="container header-inner">
+        <Link href="/" className="brand">
+          <img
+            src="/gng-logo-final.png"
+            alt="GNG New Tech LLC"
+            className="brand-logo"
+          />
+        </Link>
+
+        <nav className="nav">
+          <Link href="/">Home</Link>
+          <Link href="/about">About</Link>
+          <Link href="/products">Products</Link>
+          <Link href="/contact">Contact</Link>
+          
+            href="https://qiye.aliyun.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Webmail
+          </a>
+        </nav>
+
+        <Link className="cta" href="/contact">
+          Request Quote
+        </Link>
+      </div>
+    </header>
+  );
+}
+
 function Footer() {
   return (
     <footer className="footer">
@@ -18,7 +56,14 @@ function Footer() {
           </p>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
           <Link className="cta" href="/login">
             任务系统 / Task System
           </Link>
@@ -28,5 +73,21 @@ function Footer() {
         </div>
       </div>
     </footer>
+  );
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <Header />
+        {children}
+        <Footer />
+      </body>
+    </html>
   );
 }
