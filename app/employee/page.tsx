@@ -20,7 +20,7 @@ export default async function EmployeePage() {
 
   const { data: tasks } = await supabase
     .from("tasks")
-    .select("id, assignee_id, name, state, created_at, done_at")
+    .select("id, assignee_id, name, state, important, urgent, created_at, done_at")
     .eq("assignee_id", me.id)
     .order("created_at", { ascending: true });
 
