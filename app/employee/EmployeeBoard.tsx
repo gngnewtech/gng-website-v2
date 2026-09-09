@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
@@ -23,10 +23,15 @@ async function api(body: any) {
   return res.ok;
 }
 
-export default function EmployeeBoard({ me, tasks }: { me: Me; tasks: Task[] }) {
+export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tasks: Task[] }) {
   const router = useRouter();
+  // 本地维护任务状态，实现即时响应
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [newTask, setNewTask] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // 服务端数据变化时同步过来
+  useEffect(() => { setTasks(initialTasks); }, [initialTasks]);
 
   const total = tasks.length;
   const done = tasks.filter((t) => t.state === "done").length;
@@ -35,18 +40,29 @@ export default function EmployeeBoard({ me, tasks }: { me: Me; tasks: Task[] }) 
   const cycle = async (task: Task) => {
     const order: TaskState[] = ["todo", "doing", "done"];
     const next = order[(order.indexOf(task.state) + 1) % 3];
-    await api({ action: "setState", task_id: task.id, state: next });
-    router.refresh();
+    // 立即更新界面
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, state: next } : t)));
+    // 后台保存
+    const ok = await api({ action: "setState", task_id: task.id, state: next });
+    if (!ok) setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, state: task.state } : t))); // 失败回滚
   };
 
   const addTask = async () => {
-    if (!newTask.trim()) return;
+    const name = newTask.trim();
+    if (!name) return;
     setBusy(true);
-    // 员工建任务：后端会强制建给自己，assignee_id 不用传
-    await api({ action: "assign", name: newTask.trim() });
-    setBusy(false);
     setNewTask("");
-    router.refresh();
+    // 先用临时 id 立即显示
+    const tempId = "temp-" + Date.now();
+    setTasks((prev) => [...prev, { id: tempId, name, state: "todo" }]);
+    const ok = await api({ action: "assign", name });
+    setBusy(false);
+    if (ok) {
+      router.refresh(); // 拿到数据库里真实的 id
+    } else {
+      setTasks((prev) => prev.filter((t) => t.id !== tempId)); // 失败移除
+      setNewTask(name);
+    }
   };
 
   const logout = async () => { await fetch("/api/logout", { method: "POST" }); router.push("/login"); router.refresh(); };
@@ -79,7 +95,6 @@ export default function EmployeeBoard({ me, tasks }: { me: Me; tasks: Task[] }) 
         <h3 style={{ fontSize: 15, fontWeight: 600, color: "#475569", margin: "0 0 6px" }}>我的今日任务</h3>
         <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 14px" }}>点左侧状态按钮更新进度：待开始 → 进行中 → 已完成</p>
 
-        {/* 自己添加任务 */}
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <input
             value={newTask}
