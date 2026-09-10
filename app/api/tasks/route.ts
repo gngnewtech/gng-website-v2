@@ -13,7 +13,7 @@ async function getContext() {
     .maybeSingle();
   return { supabase, me };
 }
- 
+
 export async function POST(req: Request) {
   const { supabase, me } = await getContext();
   if (!supabase || !me) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -79,6 +79,16 @@ export async function POST(req: Request) {
       .from("tasks")
       .update({ note: clean.length ? clean : null })
       .eq("id", task_id);
+    if (e) return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "ack") {
+    const { task_id } = body;
+    // 员工确认收到自己的任务
+    let uq = supabase.from("tasks").update({ acknowledged: true }).eq("id", task_id);
+    if (!me.is_admin) uq = uq.eq("assignee_id", me.id);
+    const { error: e } = await uq;
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
