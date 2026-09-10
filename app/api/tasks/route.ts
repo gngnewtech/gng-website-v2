@@ -80,9 +80,11 @@ export async function POST(req: Request) {
   }
 
   if (action === "delete") {
-    if (!me.is_admin) return NextResponse.json({ error: "无权限" }, { status: 403 });
     const { task_id } = body;
-    const { error: e } = await supabase.from("tasks").delete().eq("id", task_id);
+    // 管理员可删任意任务；普通员工只能删自己的
+    let dq = supabase.from("tasks").delete().eq("id", task_id);
+    if (!me.is_admin) dq = dq.eq("assignee_id", me.id);
+    const { error: e } = await dq;
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
