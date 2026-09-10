@@ -19,6 +19,7 @@ const T = {
     priority: "优先级", important: "重要", urgent: "紧急",
     q1: "重要紧急", q2: "重要不急", q3: "紧急不重要", q4: "一般",
     note: "备注", notePlaceholder: "写点备注或需要修改的地方…", save: "保存", cancel: "取消",
+    delete: "删除", deleteTitle: "确认删除", deleteMsg: "确定删除这条任务吗？此操作不可撤销。",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks Today",
@@ -31,6 +32,7 @@ const T = {
     priority: "Priority", important: "Important", urgent: "Urgent",
     q1: "Important & Urgent", q2: "Important", q3: "Urgent", q4: "Normal",
     note: "Note", notePlaceholder: "Add a note or what needs changing…", save: "Save", cancel: "Cancel",
+    delete: "Delete", deleteTitle: "Delete task", deleteMsg: "Delete this task? This can't be undone.",
   },
 };
 
@@ -110,6 +112,11 @@ const CSS = `
 const toggleStyle = (on: boolean, c: string): React.CSSProperties => ({ padding: "7px 14px", borderRadius: 8, fontSize: 14, cursor: "pointer", border: `1px solid ${on ? c : "#cbd5e1"}`, background: on ? c : "#fff", color: on ? "#fff" : "#475569", fontWeight: on ? 600 : 400 });
 const chipStyle = (on: boolean, c: string): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${on ? c : "#e2e8f0"}`, background: on ? c : "#fff", color: on ? "#fff" : "#94a3b8", fontWeight: on ? 600 : 400, whiteSpace: "nowrap", flex: "none" });
 const noteBtnStyle = (has: boolean): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${has ? "#0f172a" : "#e2e8f0"}`, background: has ? "#0f172a" : "#fff", color: has ? "#fff" : "#94a3b8", whiteSpace: "nowrap", flex: "none" });
+const delBtnStyle: React.CSSProperties = { background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" };
+const empOverlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(15,23,42,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 };
+const empModal: React.CSSProperties = { width: "100%", maxWidth: 380, background: "#fff", borderRadius: 14, padding: 24 };
+const empGhostBtn: React.CSSProperties = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 8, padding: "9px 14px", fontSize: 14, cursor: "pointer" };
+const empDangerBtn: React.CSSProperties = { background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
 
 export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tasks: Task[] }) {
   const router = useRouter();
@@ -121,6 +128,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
   const [showHistory, setShowHistory] = useState(false);
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
   const [lang, setLang] = useState<"zh" | "en">("zh");
   useEffect(() => {
     const l = (navigator.language || "zh").toLowerCase();
@@ -178,6 +186,13 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
   };
 
+  const removeTask = async (task: Task) => {
+    setConfirmDelete(null);
+    setTasks((prev) => prev.filter((x) => x.id !== task.id));
+    const ok = await api({ action: "delete", task_id: task.id });
+    if (!ok) router.refresh();
+  };
+
   const addTask = async () => {
     const names = splitTasks(newTask);
     if (names.length === 0) return;
@@ -214,6 +229,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
             </>
           )}
           {history && <span className="emp-hist-date" style={{ fontSize: 12, color: "#94a3b8", flex: "none" }}>{fmtDate(x.done_at)} {t.doneAt}</span>}
+          <button onClick={() => setConfirmDelete(x)} style={delBtnStyle}>{t.delete}</button>
         </div>
         {x.note && !editing && (
           <div className="emp-note" style={{ fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {x.note}</div>
@@ -301,6 +317,20 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
           </div>
         )}
       </main>
+
+      {confirmDelete && (
+        <div style={empOverlay} onClick={() => setConfirmDelete(null)}>
+          <div style={empModal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>{t.deleteTitle}</h3>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "10px 0 4px" }}>{t.deleteMsg}</p>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: "0 0 20px", wordBreak: "break-word" }}>{confirmDelete.name}</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setConfirmDelete(null)} style={empGhostBtn}>{t.cancel}</button>
+              <button onClick={() => removeTask(confirmDelete)} style={empDangerBtn}>{t.delete}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
