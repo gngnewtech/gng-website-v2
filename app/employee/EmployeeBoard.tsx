@@ -157,6 +157,9 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const [subUrgent, setSubUrgent] = useState(false);
   const [lang, setLang] = useState<"zh" | "en">("zh");
   useEffect(() => {
+    let saved: string | null = null;
+    try { saved = localStorage.getItem("gng_lang"); } catch {}
+    if (saved === "zh" || saved === "en") { setLang(saved); return; }
     const l = (navigator.language || "zh").toLowerCase();
     setLang(l.startsWith("zh") ? "zh" : "en");
   }, []);
