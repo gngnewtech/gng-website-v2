@@ -22,13 +22,17 @@ export async function POST(req: Request) {
   const { action } = body;
 
   if (action === "assign") {
-    let { assignee_id, name, important, urgent } = body;
+    const { name, important, urgent } = body;
+    const { assignee_id, parent_id } = body;
     if (!name?.trim()) return NextResponse.json({ error: "缺少任务内容" }, { status: 400 });
-    if (!me.is_admin) assignee_id = me.id;
-    if (!assignee_id) return NextResponse.json({ error: "缺少员工" }, { status: 400 });
-    const { error: e } = await supabase
-      .from("tasks")
-      .insert({ assignee_id, name: name.trim(), state: "todo", important: !!important, urgent: !!urgent });
+    // 通过 create_task 函数建任务：可指定负责人(assignee_id)和上级任务(parent_id)；不传负责人则归调用者
+    const { error: e } = await (supabase as any).rpc("create_task", {
+      p_name: name.trim(),
+      p_assignee: assignee_id ?? null,
+      p_parent: parent_id ?? null,
+      p_important: !!important,
+      p_urgent: !!urgent,
+    });
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
@@ -81,7 +85,7 @@ export async function POST(req: Request) {
 
   if (action === "delete") {
     const { task_id } = body;
-    // 管理员可删任意任务；普通员工只能删自己的
+    // 管理员可删任意任务；普通员工只能删自己的（删父任务会级联删子任务）
     let dq = supabase.from("tasks").delete().eq("id", task_id);
     if (!me.is_admin) dq = dq.eq("assignee_id", me.id);
     const { error: e } = await dq;
