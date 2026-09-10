@@ -76,6 +76,7 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignFor, setAssignFor] = useState<string | undefined>(undefined);
   const [transfer, setTransfer] = useState<Task | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
   const [busy, setBusy] = useState(false);
 
   const tasksOf = (empId: string) => tasks.filter((t) => t.assignee_id === empId);
@@ -100,6 +101,12 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
     setBusy(false); setTransfer(null); router.refresh();
   };
   const doCycle = async (task: Task) => {
+    // 已完成再点 → 复制一条新的「待开始」任务给同一员工，原任务保持已完成
+    if (task.state === "done") {
+      await api({ action: "assign", assignee_id: task.assignee_id, name: task.name, important: task.important, urgent: task.urgent });
+      router.refresh();
+      return;
+    }
     const order: TaskState[] = ["todo", "doing", "done"];
     const next = order[(order.indexOf(task.state) + 1) % 3];
     await api({ action: "setState", task_id: task.id, state: next });
@@ -111,6 +118,11 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
   };
   const doSetNote = async (taskId: string, note: string) => {
     await api({ action: "setNote", task_id: taskId, note });
+    router.refresh();
+  };
+  const doDelete = async (task: Task) => {
+    setConfirmDelete(null);
+    await api({ action: "delete", task_id: task.id });
     router.refresh();
   };
   const logout = async () => { await fetch("/api/logout", { method: "POST" }); router.push("/login"); router.refresh(); };
@@ -136,7 +148,7 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
       <main style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
         {selected ? (
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
-            onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote}
+            onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote} onDelete={(t: Task) => setConfirmDelete(t)}
             onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar} />
         ) : (
           <>
@@ -207,11 +219,24 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
 
       {assignOpen && <AssignModal employees={employees} defaultId={assignFor} busy={busy} onClose={() => setAssignOpen(false)} onAssign={doAssign} />}
       {transfer && <TransferModal task={transfer} employees={employees} busy={busy} onClose={() => setTransfer(null)} onConfirm={doTransfer} />}
+      {confirmDelete && (
+        <div style={overlay} onClick={() => setConfirmDelete(null)}>
+          <div style={modal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>确认删除</h3>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "10px 0 4px" }}>确定删除这条任务吗？此操作不可撤销。</p>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: "0 0 20px" }}>{confirmDelete.name}</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setConfirmDelete(null)} style={btnGhost}>取消</button>
+              <button onClick={() => doDelete(confirmDelete)} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>删除</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onAssignHere, onTransfer, bar }: any) {
+function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onDelete, onAssignHere, onTransfer, bar }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort(byPriority);
   const [editingNote, setEditingNote] = useState<string | null>(null);
@@ -241,7 +266,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onAssig
         <h4 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: 0 }}>任务清单</h4>
         <button onClick={onAssignHere} style={btnPrimary}>+ 给 {emp.name} 派任务</button>
       </div>
-      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>按重要紧急程度排序 · 点状态字切换进度 · 点「重要」「紧急」调优先级 · 点「备注」写说明</p>
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>按重要紧急程度排序 · 点状态字切换进度（已完成再点复制新任务）· 点「重要」「紧急」调优先级 · 点「备注」写说明</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sorted.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 32, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>还没有任务</div> :
           sorted.map((t: Task) => {
@@ -255,6 +280,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onAssig
                   <span style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
                   <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>备注</button>
                   <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13, flex: "none" }}>转交</button>
+                  <button onClick={() => onDelete(t)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" }}>删除</button>
                 </div>
                 {t.note && !editing && (
                   <div style={{ padding: "0 16px 12px 88px", fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {t.note}</div>
