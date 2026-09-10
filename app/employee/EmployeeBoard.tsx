@@ -1,16 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
-type Task = { id: string; name: string; state: TaskState; done_at: string | null; important: boolean; urgent: boolean; note: string | null };
+type Task = {
+  id: string; name: string; state: TaskState; done_at: string | null;
+  important: boolean; urgent: boolean; note: string | null;
+  assignee_id: string; parent_id: string | null; created_by: string | null; acknowledged: boolean;
+};
+type Staff = { id: string; name: string; role: string | null; dept: string | null };
 type Me = { id: string; name: string; role: string | null; dept: string | null; email: string };
 
 const T = {
   zh: {
     brand: "GNG 任务系统", hi: "你好", todayCount: "今日", myTasks: "我的今日任务",
-    hint: "点状态按钮更新进度（已完成再点会复制一条新任务）· 点「重要」「紧急」调优先级 · 点「备注」写说明",
+    hint: "点状态更新进度（已完成再点复制一条新的）· 「+子任务」可拆分并分给同事 · 别人派给你的任务点「确认收到」",
     addPlaceholder: "添加任务，可一次输入多个（换行或用 1. 2. 3. 编号）…",
     add: "+ 添加", adding: "添加中…",
     empty: "今天还没有任务，在上面添加一个吧 🎉",
@@ -19,11 +24,13 @@ const T = {
     priority: "优先级", important: "重要", urgent: "紧急",
     q1: "重要紧急", q2: "重要不急", q3: "紧急不重要", q4: "一般",
     note: "备注", notePlaceholder: "写点备注或需要修改的地方…", save: "保存", cancel: "取消",
-    delete: "删除", deleteTitle: "确认删除", deleteMsg: "确定删除这条任务吗？此操作不可撤销。",
+    delete: "删除", deleteTitle: "确认删除", deleteMsg: "确定删除这条任务吗？（子任务会一起删除）此操作不可撤销。",
+    subAdd: "+ 子任务", subPlaceholder: "子任务内容…", assignTo: "分配给", myself: "我自己", subConfirm: "添加子任务",
+    ackReceive: "确认收到", pendingAck: "待确认", confirmed: "已确认",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks Today",
-    hint: "Tap status to update (tapping a done task copies a fresh one) · tap Important/Urgent to set priority · tap Note to add details",
+    hint: "Tap status to update (tap a done task to copy a fresh one) · +Subtask to split & assign · tap Got it on tasks assigned to you",
     addPlaceholder: "Add tasks — enter several at once (new lines or 1. 2. 3.)…",
     add: "+ Add", adding: "Adding…",
     empty: "No tasks today. Add one above 🎉",
@@ -32,7 +39,9 @@ const T = {
     priority: "Priority", important: "Important", urgent: "Urgent",
     q1: "Important & Urgent", q2: "Important", q3: "Urgent", q4: "Normal",
     note: "Note", notePlaceholder: "Add a note or what needs changing…", save: "Save", cancel: "Cancel",
-    delete: "Delete", deleteTitle: "Delete task", deleteMsg: "Delete this task? This can't be undone.",
+    delete: "Delete", deleteTitle: "Delete task", deleteMsg: "Delete this task? (subtasks are removed too) This can't be undone.",
+    subAdd: "+ Subtask", subPlaceholder: "Subtask…", assignTo: "Assign to", myself: "Myself", subConfirm: "Add subtask",
+    ackReceive: "Got it", pendingAck: "Pending", confirmed: "Confirmed",
   },
 };
 
@@ -56,7 +65,6 @@ const QUAD_META: Record<Quadrant, { color: string; bg: string; rank: number; key
   3: { color: "#c2410c", bg: "#fff7ed", rank: 2, key: "q3" },
   4: { color: "#64748b", bg: "#f1f5f9", rank: 3, key: "q4" },
 };
-// 排序：先按重要，后按紧急（象限一 → 二 → 三 → 四）
 function byPriority(a: Task, b: Task) {
   return QUAD_META[quadrantOf(a)].rank - QUAD_META[quadrantOf(b)].rank;
 }
@@ -67,18 +75,15 @@ function isToday(iso: string | null) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
-// 把一段输入拆成多个任务名：先按换行分，再按 1. 2. 3. / 1、/ 1) 等编号分；去掉开头编号
 function splitTasks(input: string): string[] {
   let parts = input.split(/\r?\n/);
-  // 对每一行，再尝试按行内编号切分（如 "1.a 2.b 3.c" 写在一行）
   const out: string[] = [];
   for (const line of parts) {
-    // 在 "数字 + . 、) 」" 这种编号前断开
     const segs = line.split(/(?=(?:^|\s)\d+\s*[.、)]\s*)/g);
     for (const seg of segs) out.push(seg);
   }
   return out
-    .map((s) => s.replace(/^\s*\d+\s*[.、)]\s*/, "").trim()) // 去掉开头编号
+    .map((s) => s.replace(/^\s*\d+\s*[.、)]\s*/, "").trim())
     .filter((s) => s.length > 0);
 }
 
@@ -99,6 +104,7 @@ const CSS = `
 .emp-task-name { flex: 1; min-width: 120px; font-size: 15px; word-break: break-word; }
 .emp-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .emp-note { padding: 0 16px 12px 92px; }
+.emp-kids { margin-left: 14px; border-left: 2px solid #eef2f7; padding-left: 8px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 @media (max-width: 560px) {
   .emp-wrap { padding: 16px; }
   .emp-profile { padding: 14px !important; margin-bottom: 14px !important; gap: 12px; }
@@ -109,19 +115,31 @@ const CSS = `
   .emp-add textarea { width: 100%; }
   .emp-add button { width: 100%; padding: 12px !important; height: auto !important; }
   .emp-note { padding-left: 16px; }
+  .emp-kids { margin-left: 8px; padding-left: 6px; }
 }
 `;
 
 const toggleStyle = (on: boolean, c: string): React.CSSProperties => ({ padding: "7px 14px", borderRadius: 8, fontSize: 14, cursor: "pointer", border: `1px solid ${on ? c : "#cbd5e1"}`, background: on ? c : "#fff", color: on ? "#fff" : "#475569", fontWeight: on ? 600 : 400 });
 const chipStyle = (on: boolean, c: string): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${on ? c : "#e2e8f0"}`, background: on ? c : "#fff", color: on ? "#fff" : "#94a3b8", fontWeight: on ? 600 : 400, whiteSpace: "nowrap", flex: "none" });
 const noteBtnStyle = (has: boolean): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${has ? "#0f172a" : "#e2e8f0"}`, background: has ? "#0f172a" : "#fff", color: has ? "#fff" : "#94a3b8", whiteSpace: "nowrap", flex: "none" });
+const subBtnStyle: React.CSSProperties = { fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: "1px solid #cbd5e1", background: "#fff", color: "#475569", whiteSpace: "nowrap", flex: "none" };
 const delBtnStyle: React.CSSProperties = { background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" };
+const ackBtnStyle: React.CSSProperties = { background: "#059669", color: "#fff", border: "none", borderRadius: 999, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flex: "none" };
+const stateBtnStyle = (s: TaskState): React.CSSProperties => ({ background: TASK_TONE[s].bg, color: TASK_TONE[s].color, border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 13, minWidth: 68, fontWeight: 500, flex: "none" });
+const stateBadgeStyle = (s: TaskState): React.CSSProperties => ({ background: TASK_TONE[s].bg, color: TASK_TONE[s].color, borderRadius: 6, padding: "6px 10px", fontSize: 13, minWidth: 68, textAlign: "center", fontWeight: 500, flex: "none" });
+const assigneeTagStyle: React.CSSProperties = { fontSize: 12, color: "#475569", background: "#f1f5f9", borderRadius: 999, padding: "3px 9px", whiteSpace: "nowrap", flex: "none" };
+const ackPendStyle: React.CSSProperties = { fontSize: 11, color: "#b45309", background: "#fffbeb", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" };
+const ackDoneStyle: React.CSSProperties = { fontSize: 11, color: "#047857", background: "#ecfdf5", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" };
+const fieldStyle: React.CSSProperties = { width: "100%", padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+const selectStyle: React.CSSProperties = { padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none" };
+const smallPrimary: React.CSSProperties = { background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" };
+const smallGhost: React.CSSProperties = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" };
 const empOverlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(15,23,42,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 };
 const empModal: React.CSSProperties = { width: "100%", maxWidth: 380, background: "#fff", borderRadius: 14, padding: 24 };
 const empGhostBtn: React.CSSProperties = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 8, padding: "9px 14px", fontSize: 14, cursor: "pointer" };
 const empDangerBtn: React.CSSProperties = { background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
 
-export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tasks: Task[] }) {
+export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: Me; tasks: Task[]; staff: Staff[] }) {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [newTask, setNewTask] = useState("");
@@ -132,6 +150,11 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
+  const [addingSubFor, setAddingSubFor] = useState<string | null>(null);
+  const [subName, setSubName] = useState("");
+  const [subAssignee, setSubAssignee] = useState<string>(me.id);
+  const [subImportant, setSubImportant] = useState(false);
+  const [subUrgent, setSubUrgent] = useState(false);
   const [lang, setLang] = useState<"zh" | "en">("zh");
   useEffect(() => {
     const l = (navigator.language || "zh").toLowerCase();
@@ -141,27 +164,37 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
 
   useEffect(() => { setTasks(initialTasks); }, [initialTasks]);
 
+  const staffMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    staff.forEach((s) => { m[s.id] = s.name; });
+    return m;
+  }, [staff]);
+
   const fmtDate = (iso: string | null) => {
     if (!iso) return "";
     const d = new Date(iso);
     return lang === "zh" ? `${d.getMonth() + 1}月${d.getDate()}日` : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  const todayTasks = tasks.filter((x) => x.state !== "done" || isToday(x.done_at)).sort(byPriority);
-  const historyTasks = tasks.filter((x) => x.state === "done" && !isToday(x.done_at)).sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
+  const idSet = useMemo(() => new Set(tasks.map((x) => x.id)), [tasks]);
+  const childrenOf = (id: string) => tasks.filter((x) => x.parent_id === id).sort(byPriority);
+  const roots = tasks.filter((x) => !x.parent_id || !idSet.has(x.parent_id));
+  const todayRoots = roots.filter((r) => r.state !== "done" || isToday(r.done_at)).sort(byPriority);
+  const historyRoots = roots.filter((r) => r.state === "done" && !isToday(r.done_at)).sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
 
-  const total = todayTasks.length;
-  const done = todayTasks.filter((x) => x.state === "done").length;
+  const myActive = tasks.filter((x) => x.assignee_id === me.id && (x.state !== "done" || isToday(x.done_at)));
+  const total = myActive.length;
+  const done = myActive.filter((x) => x.state === "done").length;
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
 
   const q: Quadrant = important && urgent ? 1 : important ? 2 : urgent ? 3 : 4;
 
   const cycle = async (task: Task) => {
-    // 已完成再点 → 复制一条新的「待开始」任务，原任务保持已完成
+    // 已完成再点 → 复制一条新的「待开始」任务（同一层级、归自己），原任务保持已完成
     if (task.state === "done") {
-      const temp: Task = { id: "temp-" + Date.now(), name: task.name, state: "todo", done_at: null, important: task.important, urgent: task.urgent, note: null };
+      const temp: Task = { id: "temp-" + Date.now(), name: task.name, state: "todo", done_at: null, important: task.important, urgent: task.urgent, note: null, assignee_id: me.id, parent_id: task.parent_id, created_by: me.id, acknowledged: true };
       setTasks((prev) => [...prev, temp]);
-      const ok = await api({ action: "assign", name: task.name, important: task.important, urgent: task.urgent });
+      const ok = await api({ action: "assign", name: task.name, important: task.important, urgent: task.urgent, parent_id: task.parent_id });
       if (ok) router.refresh();
       else setTasks((prev) => prev.filter((x) => x.id !== temp.id));
       return;
@@ -180,6 +213,12 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
   };
 
+  const acknowledge = async (task: Task) => {
+    setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, acknowledged: true } : x)));
+    const ok = await api({ action: "ack", task_id: task.id });
+    if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
+  };
+
   const openNote = (task: Task) => { setEditingNote(task.id); setNoteDraft(task.note ?? ""); };
   const saveNote = async (task: Task) => {
     const note = noteDraft.trim();
@@ -191,9 +230,17 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
 
   const removeTask = async (task: Task) => {
     setConfirmDelete(null);
-    setTasks((prev) => prev.filter((x) => x.id !== task.id));
-    const ok = await api({ action: "delete", task_id: task.id });
-    if (!ok) router.refresh();
+    await api({ action: "delete", task_id: task.id });
+    router.refresh();
+  };
+
+  const openSub = (task: Task) => { setAddingSubFor(task.id); setSubName(""); setSubAssignee(me.id); setSubImportant(false); setSubUrgent(false); };
+  const submitSub = async (parentId: string) => {
+    const name = subName.trim();
+    if (!name) return;
+    setAddingSubFor(null);
+    await api({ action: "assign", name, parent_id: parentId, assignee_id: subAssignee, important: subImportant, urgent: subUrgent });
+    router.refresh();
   };
 
   const addTask = async () => {
@@ -201,10 +248,8 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
     if (names.length === 0) return;
     setBusy(true);
     setNewTask("");
-    // 立即显示（乐观更新）
-    const temps = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo" as TaskState, done_at: null, important, urgent, note: null }));
+    const temps: Task[] = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo", done_at: null, important, urgent, note: null, assignee_id: me.id, parent_id: null, created_by: me.id, acknowledged: true }));
     setTasks((prev) => [...prev, ...temps]);
-    // 逐个提交
     let allOk = true;
     for (const name of names) {
       const ok = await api({ action: "assign", name, important, urgent });
@@ -217,25 +262,36 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
 
   const logout = async () => { await fetch("/api/logout", { method: "POST" }); router.push("/login"); router.refresh(); };
 
-  const taskRow = (x: Task, history = false) => {
+  const card = (x: Task) => {
+    const mine = x.assignee_id === me.id;
     const editing = editingNote === x.id;
+    const needsAck = mine && !!x.created_by && x.created_by !== me.id && !x.acknowledged;
     return (
-      <div key={x.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ background: "#fff", border: `1px solid ${needsAck ? "#f59e0b" : "#e2e8f0"}`, borderRadius: 10, overflow: "hidden" }}>
         <div className="emp-task">
-          <button onClick={() => cycle(x)} style={{ background: TASK_TONE[x.state].bg, color: TASK_TONE[x.state].color, border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 13, minWidth: 68, fontWeight: 500, flex: "none" }}>{t[x.state]}</button>
+          {mine
+            ? <button onClick={() => cycle(x)} style={stateBtnStyle(x.state)}>{t[x.state]}</button>
+            : <span style={stateBadgeStyle(x.state)}>{t[x.state]}</span>}
           <span className="emp-task-name" style={{ textDecoration: x.state === "done" ? "line-through" : "none", color: x.state === "done" ? "#94a3b8" : "#334155" }}>{x.name}</span>
           <div className="emp-actions">
-            {!history && (
+            {mine ? (
               <>
+                {needsAck && <button onClick={() => acknowledge(x)} style={ackBtnStyle}>{t.ackReceive}</button>}
                 <button onClick={() => setPriority(x, !x.important, x.urgent)} style={chipStyle(x.important, "#1d4ed8")}>{t.important}</button>
                 <button onClick={() => setPriority(x, x.important, !x.urgent)} style={chipStyle(x.urgent, "#be123c")}>{t.urgent}</button>
                 <button onClick={() => (editing ? setEditingNote(null) : openNote(x))} style={noteBtnStyle(!!x.note)}>{t.note}</button>
+                <button onClick={() => (addingSubFor === x.id ? setAddingSubFor(null) : openSub(x))} style={subBtnStyle}>{t.subAdd}</button>
+                <button onClick={() => setConfirmDelete(x)} style={delBtnStyle}>{t.delete}</button>
+              </>
+            ) : (
+              <>
+                <span style={assigneeTagStyle}>→ {staffMap[x.assignee_id] || "?"}</span>
+                <span style={x.acknowledged ? ackDoneStyle : ackPendStyle}>{x.acknowledged ? t.confirmed : t.pendingAck}</span>
               </>
             )}
-            {history && <span className="emp-hist-date" style={{ fontSize: 12, color: "#94a3b8", flex: "none" }}>{fmtDate(x.done_at)} {t.doneAt}</span>}
-            <button onClick={() => setConfirmDelete(x)} style={delBtnStyle}>{t.delete}</button>
           </div>
         </div>
+
         {x.note && !editing && (
           <div className="emp-note" style={{ fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {x.note}</div>
         )}
@@ -244,9 +300,40 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
             <textarea value={noteDraft} autoFocus onChange={(e) => setNoteDraft(e.target.value)} rows={2} placeholder={t.notePlaceholder}
               style={{ width: "100%", padding: 10, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <button onClick={() => saveNote(x)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>{t.save}</button>
-              <button onClick={() => setEditingNote(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>{t.cancel}</button>
+              <button onClick={() => saveNote(x)} style={smallPrimary}>{t.save}</button>
+              <button onClick={() => setEditingNote(null)} style={smallGhost}>{t.cancel}</button>
             </div>
+          </div>
+        )}
+        {addingSubFor === x.id && (
+          <div className="emp-note" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <input value={subName} autoFocus onChange={(e) => setSubName(e.target.value)} placeholder={t.subPlaceholder} style={fieldStyle} />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "#64748b" }}>{t.assignTo}</span>
+              <select value={subAssignee} onChange={(e) => setSubAssignee(e.target.value)} style={selectStyle}>
+                {staff.map((s) => <option key={s.id} value={s.id}>{s.id === me.id ? t.myself : s.name}</option>)}
+              </select>
+              <button onClick={() => setSubImportant((v) => !v)} style={chipStyle(subImportant, "#1d4ed8")}>{t.important}</button>
+              <button onClick={() => setSubUrgent((v) => !v)} style={chipStyle(subUrgent, "#be123c")}>{t.urgent}</button>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => submitSub(x.id)} disabled={!subName.trim()} style={{ ...smallPrimary, opacity: subName.trim() ? 1 : 0.5 }}>{t.subConfirm}</button>
+              <button onClick={() => setAddingSubFor(null)} style={smallGhost}>{t.cancel}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderNode = (x: Task) => {
+    const kids = childrenOf(x.id);
+    return (
+      <div key={x.id}>
+        {card(x)}
+        {kids.length > 0 && (
+          <div className="emp-kids">
+            {kids.map((k) => renderNode(k))}
           </div>
         )}
       </div>
@@ -300,23 +387,23 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {todayTasks.length === 0 ? (
+          {todayRoots.length === 0 ? (
             <div style={{ textAlign: "center", color: "#94a3b8", padding: 40, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 12 }}>{t.empty}</div>
           ) : (
-            todayTasks.map((x) => taskRow(x))
+            todayRoots.map((r) => renderNode(r))
           )}
         </div>
 
-        {historyTasks.length > 0 && (
+        {historyRoots.length > 0 && (
           <div style={{ marginTop: 28 }}>
             <button onClick={() => setShowHistory((v) => !v)}
               style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#475569", padding: 0 }}>
               <span style={{ transform: showHistory ? "rotate(90deg)" : "none", transition: "transform .2s" }}>▶</span>
-              {t.history}（{historyTasks.length}）
+              {t.history}（{historyRoots.length}）
             </button>
             {showHistory && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-                {historyTasks.map((x) => taskRow(x, true))}
+                {historyRoots.map((r) => renderNode(r))}
               </div>
             )}
           </div>
