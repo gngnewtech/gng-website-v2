@@ -97,15 +97,18 @@ const CSS = `
 .emp-prio { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .emp-task { display: flex; align-items: center; gap: 10px; padding: 14px 16px; flex-wrap: wrap; }
 .emp-task-name { flex: 1; min-width: 120px; font-size: 15px; word-break: break-word; }
+.emp-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .emp-note { padding: 0 16px 12px 92px; }
 @media (max-width: 560px) {
   .emp-wrap { padding: 16px; }
-  .emp-profile { flex-wrap: wrap; }
-  .emp-profile .emp-pct { width: 100%; text-align: left; margin-top: 4px; }
-  .emp-add { flex-direction: column; }
+  .emp-profile { padding: 14px !important; margin-bottom: 14px !important; gap: 12px; }
+  .emp-avatar { width: 40px !important; height: 40px !important; font-size: 15px !important; }
+  .emp-hi { font-size: 16px !important; }
+  .emp-pct div:first-child { font-size: 22px !important; }
+  .emp-add { flex-direction: column; align-items: stretch; }
+  .emp-add textarea { width: 100%; }
   .emp-add button { width: 100%; padding: 12px !important; height: auto !important; }
   .emp-note { padding-left: 16px; }
-  .emp-task .emp-hist-date { width: 100%; padding-left: 0; }
 }
 `;
 
@@ -221,15 +224,17 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
         <div className="emp-task">
           <button onClick={() => cycle(x)} style={{ background: TASK_TONE[x.state].bg, color: TASK_TONE[x.state].color, border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 13, minWidth: 68, fontWeight: 500, flex: "none" }}>{t[x.state]}</button>
           <span className="emp-task-name" style={{ textDecoration: x.state === "done" ? "line-through" : "none", color: x.state === "done" ? "#94a3b8" : "#334155" }}>{x.name}</span>
-          {!history && (
-            <>
-              <button onClick={() => setPriority(x, !x.important, x.urgent)} style={chipStyle(x.important, "#1d4ed8")}>{t.important}</button>
-              <button onClick={() => setPriority(x, x.important, !x.urgent)} style={chipStyle(x.urgent, "#be123c")}>{t.urgent}</button>
-              <button onClick={() => (editing ? setEditingNote(null) : openNote(x))} style={noteBtnStyle(!!x.note)}>{t.note}</button>
-            </>
-          )}
-          {history && <span className="emp-hist-date" style={{ fontSize: 12, color: "#94a3b8", flex: "none" }}>{fmtDate(x.done_at)} {t.doneAt}</span>}
-          <button onClick={() => setConfirmDelete(x)} style={delBtnStyle}>{t.delete}</button>
+          <div className="emp-actions">
+            {!history && (
+              <>
+                <button onClick={() => setPriority(x, !x.important, x.urgent)} style={chipStyle(x.important, "#1d4ed8")}>{t.important}</button>
+                <button onClick={() => setPriority(x, x.important, !x.urgent)} style={chipStyle(x.urgent, "#be123c")}>{t.urgent}</button>
+                <button onClick={() => (editing ? setEditingNote(null) : openNote(x))} style={noteBtnStyle(!!x.note)}>{t.note}</button>
+              </>
+            )}
+            {history && <span className="emp-hist-date" style={{ fontSize: 12, color: "#94a3b8", flex: "none" }}>{fmtDate(x.done_at)} {t.doneAt}</span>}
+            <button onClick={() => setConfirmDelete(x)} style={delBtnStyle}>{t.delete}</button>
+          </div>
         </div>
         {x.note && !editing && (
           <div className="emp-note" style={{ fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {x.note}</div>
@@ -263,9 +268,9 @@ export default function EmployeeBoard({ me, tasks: initialTasks }: { me: Me; tas
 
       <main className="emp-wrap">
         <div className="emp-profile" style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 20, marginBottom: 20 }}>
-          <div style={{ width: 48, height: 48, flex: "none", borderRadius: "50%", background: "#1e293b", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 500, fontSize: 17 }}>{me.name.slice(-2)}</div>
+          <div className="emp-avatar" style={{ width: 48, height: 48, flex: "none", borderRadius: "50%", background: "#1e293b", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 500, fontSize: 17 }}>{me.name.slice(-2)}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ fontSize: 19, fontWeight: 700, margin: 0 }}>{t.hi}，{me.name}</h2>
+            <h2 className="emp-hi" style={{ fontSize: 19, fontWeight: 700, margin: 0 }}>{t.hi}，{me.name}</h2>
             <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>{me.dept} · {me.role}</p>
           </div>
           <div className="emp-pct" style={{ textAlign: "right" }}>
