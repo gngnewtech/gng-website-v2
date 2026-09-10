@@ -7,7 +7,7 @@ type TaskState = "todo" | "doing" | "done";
 type Task = {
   id: string; name: string; state: TaskState; done_at: string | null;
   important: boolean; urgent: boolean; note: string | null;
-  assignee_id: string; parent_id: string | null; created_by: string | null; acknowledged: boolean;
+  assignee_id: string; parent_id: string | null; created_by: string | null; acknowledged: boolean; start_at: string | null;
 };
 type Staff = { id: string; name: string; role: string | null; dept: string | null };
 type Me = { id: string; name: string; role: string | null; dept: string | null; email: string };
@@ -26,7 +26,7 @@ const T = {
     note: "备注", notePlaceholder: "写点备注或需要修改的地方…", save: "保存", cancel: "取消",
     delete: "删除", deleteTitle: "确认删除", deleteMsg: "确定删除这条任务吗？（子任务会一起删除）此操作不可撤销。",
     subAdd: "+ 子任务", subPlaceholder: "子任务内容…", assignTo: "分配给", myself: "我自己", subConfirm: "添加子任务",
-    ackReceive: "确认收到", pendingAck: "待确认", confirmed: "已确认",
+    ackReceive: "确认收到", pendingAck: "待确认", confirmed: "已确认", startTime: "开始时间",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks Today",
@@ -41,7 +41,7 @@ const T = {
     note: "Note", notePlaceholder: "Add a note or what needs changing…", save: "Save", cancel: "Cancel",
     delete: "Delete", deleteTitle: "Delete task", deleteMsg: "Delete this task? (subtasks are removed too) This can't be undone.",
     subAdd: "+ Subtask", subPlaceholder: "Subtask…", assignTo: "Assign to", myself: "Myself", subConfirm: "Add subtask",
-    ackReceive: "Got it", pendingAck: "Pending", confirmed: "Confirmed",
+    ackReceive: "Got it", pendingAck: "Pending", confirmed: "Confirmed", startTime: "Start time",
   },
 };
 
@@ -130,6 +130,7 @@ const stateBadgeStyle = (s: TaskState): React.CSSProperties => ({ background: TA
 const assigneeTagStyle: React.CSSProperties = { fontSize: 12, color: "#475569", background: "#f1f5f9", borderRadius: 999, padding: "3px 9px", whiteSpace: "nowrap", flex: "none" };
 const ackPendStyle: React.CSSProperties = { fontSize: 11, color: "#b45309", background: "#fffbeb", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" };
 const ackDoneStyle: React.CSSProperties = { fontSize: 11, color: "#047857", background: "#ecfdf5", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" };
+const startBadgeStyle: React.CSSProperties = { fontSize: 11, color: "#0369a1", background: "#f0f9ff", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" };
 const fieldStyle: React.CSSProperties = { width: "100%", padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
 const selectStyle: React.CSSProperties = { padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none" };
 const smallPrimary: React.CSSProperties = { background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" };
@@ -155,6 +156,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const [subAssignee, setSubAssignee] = useState<string>(me.id);
   const [subImportant, setSubImportant] = useState(false);
   const [subUrgent, setSubUrgent] = useState(false);
+  const [subStart, setSubStart] = useState("");
   const [lang, setLang] = useState<"zh" | "en">("zh");
   useEffect(() => {
     let saved: string | null = null;
@@ -178,6 +180,13 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     const d = new Date(iso);
     return lang === "zh" ? `${d.getMonth() + 1}月${d.getDate()}日` : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
+  const fmtDateTime = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return lang === "zh" ? `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}` : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  };
 
   const idSet = useMemo(() => new Set(tasks.map((x) => x.id)), [tasks]);
   const childrenOf = (id: string) => tasks.filter((x) => x.parent_id === id).sort(byPriority);
@@ -195,7 +204,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const cycle = async (task: Task) => {
     // 已完成再点 → 复制一条新的「待开始」任务（同一层级、归自己），原任务保持已完成
     if (task.state === "done") {
-      const temp: Task = { id: "temp-" + Date.now(), name: task.name, state: "todo", done_at: null, important: task.important, urgent: task.urgent, note: null, assignee_id: me.id, parent_id: task.parent_id, created_by: me.id, acknowledged: true };
+      const temp: Task = { id: "temp-" + Date.now(), name: task.name, state: "todo", done_at: null, important: task.important, urgent: task.urgent, note: null, assignee_id: me.id, parent_id: task.parent_id, created_by: me.id, acknowledged: true, start_at: null };
       setTasks((prev) => [...prev, temp]);
       const ok = await api({ action: "assign", name: task.name, important: task.important, urgent: task.urgent, parent_id: task.parent_id });
       if (ok) router.refresh();
@@ -237,12 +246,12 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     router.refresh();
   };
 
-  const openSub = (task: Task) => { setAddingSubFor(task.id); setSubName(""); setSubAssignee(me.id); setSubImportant(false); setSubUrgent(false); };
+  const openSub = (task: Task) => { setAddingSubFor(task.id); setSubName(""); setSubAssignee(me.id); setSubImportant(false); setSubUrgent(false); setSubStart(""); };
   const submitSub = async (parentId: string) => {
     const name = subName.trim();
     if (!name) return;
     setAddingSubFor(null);
-    await api({ action: "assign", name, parent_id: parentId, assignee_id: subAssignee, important: subImportant, urgent: subUrgent });
+    await api({ action: "assign", name, parent_id: parentId, assignee_id: subAssignee, important: subImportant, urgent: subUrgent, start_at: subStart ? new Date(subStart).toISOString() : null });
     router.refresh();
   };
 
@@ -251,7 +260,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     if (names.length === 0) return;
     setBusy(true);
     setNewTask("");
-    const temps: Task[] = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo", done_at: null, important, urgent, note: null, assignee_id: me.id, parent_id: null, created_by: me.id, acknowledged: true }));
+    const temps: Task[] = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo", done_at: null, important, urgent, note: null, assignee_id: me.id, parent_id: null, created_by: me.id, acknowledged: true, start_at: null }));
     setTasks((prev) => [...prev, ...temps]);
     let allOk = true;
     for (const name of names) {
@@ -277,6 +286,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
             : <span style={stateBadgeStyle(x.state)}>{t[x.state]}</span>}
           <span className="emp-task-name" style={{ textDecoration: x.state === "done" ? "line-through" : "none", color: x.state === "done" ? "#94a3b8" : "#334155" }}>{x.name}</span>
           <div className="emp-actions">
+            {x.start_at && <span style={startBadgeStyle}>🕐 {fmtDateTime(x.start_at)}</span>}
             {mine ? (
               <>
                 {needsAck && <button onClick={() => acknowledge(x)} style={ackBtnStyle}>{t.ackReceive}</button>}
@@ -318,6 +328,10 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
               </select>
               <button onClick={() => setSubImportant((v) => !v)} style={chipStyle(subImportant, "#1d4ed8")}>{t.important}</button>
               <button onClick={() => setSubUrgent((v) => !v)} style={chipStyle(subUrgent, "#be123c")}>{t.urgent}</button>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "#64748b" }}>{t.startTime}</span>
+              <input type="datetime-local" value={subStart} onChange={(e) => setSubStart(e.target.value)} style={selectStyle} />
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => submitSub(x.id)} disabled={!subName.trim()} style={{ ...smallPrimary, opacity: subName.trim() ? 1 : 0.5 }}>{t.subConfirm}</button>
