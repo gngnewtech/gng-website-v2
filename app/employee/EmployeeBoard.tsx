@@ -14,12 +14,13 @@ type Me = { id: string; name: string; role: string | null; dept: string | null; 
 
 const T = {
   zh: {
-    brand: "GNG 任务系统", hi: "你好", todayCount: "今日", myTasks: "我的今日任务",
-    hint: "点状态更新进度（已完成再点复制一条新的）· 「+子任务」可拆分并分给同事 · 别人派给你的任务点「确认收到」",
+    brand: "GNG 任务系统", hi: "你好", todayCount: "今日", myTasks: "我的任务",
+    hint: "按开始日期分天 · 「+子任务」可拆分/分给同事/设开始时间 · 别人派给你的任务点「确认收到」",
     addPlaceholder: "添加任务，可一次输入多个（换行或用 1. 2. 3. 编号）…",
     add: "+ 添加", adding: "添加中…",
-    empty: "今天还没有任务，在上面添加一个吧 🎉",
+    empty: "还没有任务，在上面添加一个吧 🎉",
     history: "历史任务", doneAt: "完成", logout: "退出",
+    noDate: "未安排", today: "今天", tomorrow: "明天", yesterday: "昨天", completed: "已完成", belongsTo: "属于", subtaskGeneric: "子任务", mineLegend: "我做的", delegatedLegend: "别人做的",
     todo: "待开始", doing: "进行中", done: "已完成",
     priority: "优先级", important: "重要", urgent: "紧急",
     q1: "重要紧急", q2: "重要不急", q3: "紧急不重要", q4: "一般",
@@ -29,12 +30,13 @@ const T = {
     ackReceive: "确认收到", pendingAck: "待确认", confirmed: "已确认", startTime: "开始时间",
   },
   en: {
-    brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks Today",
-    hint: "Tap status to update (tap a done task to copy a fresh one) · +Subtask to split & assign · tap Got it on tasks assigned to you",
+    brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks",
+    hint: "Grouped by start date · +Subtask to split / assign / set a start time · tap Got it on tasks assigned to you",
     addPlaceholder: "Add tasks — enter several at once (new lines or 1. 2. 3.)…",
     add: "+ Add", adding: "Adding…",
-    empty: "No tasks today. Add one above 🎉",
+    empty: "No tasks yet. Add one above 🎉",
     history: "Task History", doneAt: "done", logout: "Log out",
+    noDate: "No date", today: "Today", tomorrow: "Tomorrow", yesterday: "Yesterday", completed: "Completed", belongsTo: "Part of", subtaskGeneric: "Subtask", mineLegend: "Mine to do", delegatedLegend: "Others to do",
     todo: "To-do", doing: "In progress", done: "Done",
     priority: "Priority", important: "Important", urgent: "Urgent",
     q1: "Important & Urgent", q2: "Important", q3: "Urgent", q4: "Normal",
@@ -188,11 +190,32 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     return lang === "zh" ? `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}` : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   };
 
-  const idSet = useMemo(() => new Set(tasks.map((x) => x.id)), [tasks]);
-  const childrenOf = (id: string) => tasks.filter((x) => x.parent_id === id).sort(byPriority);
-  const roots = tasks.filter((x) => !x.parent_id || !idSet.has(x.parent_id));
-  const todayRoots = roots.filter((r) => r.state !== "done" || isToday(r.done_at)).sort(byPriority);
-  const historyRoots = roots.filter((r) => r.state === "done" && !isToday(r.done_at)).sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
+  const nameById = useMemo(() => { const m: Record<string, string> = {}; tasks.forEach((x) => { m[x.id] = x.name; }); return m; }, [tasks]);
+
+  const localDayKey = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+  const weekZh = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  const dayLabel = (iso: string | null) => {
+    if (!iso) return t.noDate;
+    const d = new Date(iso);
+    const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+    const d0 = new Date(d); d0.setHours(0, 0, 0, 0);
+    const diff = Math.round((d0.getTime() - today0.getTime()) / 86400000);
+    if (diff === 0) return t.today;
+    if (diff === 1) return t.tomorrow;
+    if (diff === -1) return t.yesterday;
+    return lang === "zh" ? `${d.getMonth() + 1}月${d.getDate()}日 ${weekZh[d.getDay()]}` : d.toLocaleDateString("en-US", { month: "short", day: "numeric", weekday: "short" });
+  };
+
+  const activeTasks = tasks.filter((x) => x.state !== "done");
+  const doneTasks = tasks.filter((x) => x.state === "done").sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
+  const groupsMap = new Map<string, Task[]>();
+  activeTasks.forEach((x) => {
+    const key = x.start_at ? localDayKey(x.start_at) : "";
+    if (!groupsMap.has(key)) groupsMap.set(key, []);
+    groupsMap.get(key)!.push(x);
+  });
+  const dayGroups = Array.from(groupsMap.entries()).map(([key, list]) => ({ key, iso: (list.find((x) => x.start_at)?.start_at) ?? null, list: list.slice().sort(byPriority) }));
+  dayGroups.sort((a, b) => { if (a.key === "") return 1; if (b.key === "") return -1; return (a.iso ?? "").localeCompare(b.iso ?? ""); });
 
   const myActive = tasks.filter((x) => x.assignee_id === me.id && (x.state !== "done" || isToday(x.done_at)));
   const total = myActive.length;
@@ -279,7 +302,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     const editing = editingNote === x.id;
     const needsAck = mine && !!x.created_by && x.created_by !== me.id && !x.acknowledged;
     return (
-      <div style={{ background: "#fff", border: `1px solid ${needsAck ? "#f59e0b" : "#e2e8f0"}`, borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ background: mine ? "#fff" : "#faf5ff", border: `1px solid ${needsAck ? "#f59e0b" : "#e2e8f0"}`, borderLeft: `4px solid ${mine ? "#2563eb" : "#a855f7"}`, borderRadius: 10, overflow: "hidden" }}>
         <div className="emp-task">
           {mine
             ? <button onClick={() => cycle(x)} style={stateBtnStyle(x.state)}>{t[x.state]}</button>
@@ -305,6 +328,9 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
           </div>
         </div>
 
+        {x.parent_id && (
+          <div className="emp-note" style={{ fontSize: 12, color: "#94a3b8", paddingTop: 0 }}>↳ {nameById[x.parent_id] ? `${t.belongsTo}「${nameById[x.parent_id]}」` : t.subtaskGeneric}</div>
+        )}
         {x.note && !editing && (
           <div className="emp-note" style={{ fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {x.note}</div>
         )}
@@ -337,20 +363,6 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
               <button onClick={() => submitSub(x.id)} disabled={!subName.trim()} style={{ ...smallPrimary, opacity: subName.trim() ? 1 : 0.5 }}>{t.subConfirm}</button>
               <button onClick={() => setAddingSubFor(null)} style={smallGhost}>{t.cancel}</button>
             </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderNode = (x: Task) => {
-    const kids = childrenOf(x.id);
-    return (
-      <div key={x.id}>
-        {card(x)}
-        {kids.length > 0 && (
-          <div className="emp-kids">
-            {kids.map((k) => renderNode(k))}
           </div>
         )}
       </div>
@@ -403,24 +415,38 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
           <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color: QUAD_META[q].color, background: QUAD_META[q].bg }}>{t[QUAD_META[q].key]}</span>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {todayRoots.length === 0 ? (
-            <div style={{ textAlign: "center", color: "#94a3b8", padding: 40, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 12 }}>{t.empty}</div>
-          ) : (
-            todayRoots.map((r) => renderNode(r))
-          )}
+        <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#64748b", margin: "0 0 12px" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#2563eb", display: "inline-block" }} />{t.mineLegend}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#a855f7", display: "inline-block" }} />{t.delegatedLegend}</span>
         </div>
 
-        {historyRoots.length > 0 && (
-          <div style={{ marginTop: 28 }}>
+        {activeTasks.length === 0 ? (
+          <div style={{ textAlign: "center", color: "#94a3b8", padding: 40, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 12 }}>{t.empty}</div>
+        ) : (
+          dayGroups.map((g) => (
+            <div key={g.key || "none"} style={{ marginBottom: 22 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 10px" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: g.key === "" ? "#94a3b8" : "#0369a1" }}>{dayLabel(g.iso)}</span>
+                <span style={{ fontSize: 12, color: "#94a3b8" }}>{g.list.length}</span>
+                <div style={{ flex: 1, height: 1, background: "#eef2f7" }} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {g.list.map((x) => <div key={x.id}>{card(x)}</div>)}
+              </div>
+            </div>
+          ))
+        )}
+
+        {doneTasks.length > 0 && (
+          <div style={{ marginTop: 20 }}>
             <button onClick={() => setShowHistory((v) => !v)}
               style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#475569", padding: 0 }}>
               <span style={{ transform: showHistory ? "rotate(90deg)" : "none", transition: "transform .2s" }}>▶</span>
-              {t.history}（{historyRoots.length}）
+              {t.completed}（{doneTasks.length}）
             </button>
             {showHistory && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-                {historyRoots.map((r) => renderNode(r))}
+                {doneTasks.map((x) => <div key={x.id}>{card(x)}</div>)}
               </div>
             )}
           </div>
