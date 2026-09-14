@@ -26,6 +26,7 @@ const T = {
     q1: "重要紧急", q2: "重要不急", q3: "紧急不重要", q4: "一般",
     note: "备注", notePlaceholder: "写点备注或需要修改的地方…", save: "保存", cancel: "取消",
     delete: "删除", deleteTitle: "确认删除", deleteMsg: "确定删除这条任务吗？（子任务会一起删除）此操作不可撤销。",
+    deleteFail: "删除失败：",
     subAdd: "+ 子任务", subPlaceholder: "子任务内容…", assignTo: "分配给", myself: "我自己", subConfirm: "添加子任务",
     ackReceive: "确认收到", pendingAck: "待确认", confirmed: "已确认", startTime: "开始时间",
   },
@@ -42,6 +43,7 @@ const T = {
     q1: "Important & Urgent", q2: "Important", q3: "Urgent", q4: "Normal",
     note: "Note", notePlaceholder: "Add a note or what needs changing…", save: "Save", cancel: "Cancel",
     delete: "Delete", deleteTitle: "Delete task", deleteMsg: "Delete this task? (subtasks are removed too) This can't be undone.",
+    deleteFail: "Delete failed: ",
     subAdd: "+ Subtask", subPlaceholder: "Subtask…", assignTo: "Assign to", myself: "Myself", subConfirm: "Add subtask",
     ackReceive: "Got it", pendingAck: "Pending", confirmed: "Confirmed", startTime: "Start time",
   },
@@ -263,10 +265,46 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
   };
 
+  // 收集某任务下所有子孙任务的 id（用于连带删除，深层在前）
+  const collectDescendants = (rootId: string): string[] => {
+    const out: string[] = [];
+    const walk = (pid: string) => {
+      tasks.forEach((x) => {
+        if (x.parent_id === pid) { out.push(x.id); walk(x.id); }
+      });
+    };
+    walk(rootId);
+    return out;
+  };
+
   const removeTask = async (task: Task) => {
     setConfirmDelete(null);
-    await api({ action: "delete", task_id: task.id });
-    router.refresh();
+    // 先删子孙、再删自己，避免数据库外键约束导致删除失败
+    const ids = [...collectDescendants(task.id).reverse(), task.id];
+    const removing = new Set(ids);
+    const backup = tasks;
+    // 立即从界面移除，操作有即时反馈
+    setTasks((prev) => prev.filter((x) => !removing.has(x.id)));
+    try {
+      for (const id of ids) {
+        if (id.startsWith("temp-")) continue; // 临时任务未入库，跳过
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", task_id: id }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({} as any));
+          throw new Error(data?.error || `HTTP ${res.status}`);
+        }
+      }
+      router.refresh();
+    } catch (err: any) {
+      // 失败：恢复界面并把真正的错误告诉用户
+      setTasks(backup);
+      alert(t.deleteFail + (err?.message || "unknown"));
+      router.refresh();
+    }
   };
 
   const openSub = (task: Task) => { setAddingSubFor(task.id); setSubName(""); setSubAssignee(me.id); setSubImportant(false); setSubUrgent(false); setSubStart(""); };
