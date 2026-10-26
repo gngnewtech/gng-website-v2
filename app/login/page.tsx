@@ -69,7 +69,7 @@ export default function LoginPage() {
     const { data: { user } } = await supabase.auth.getUser();
     const { data: emp } = await supabase
       .from("employees")
-      .select("is_admin")
+      .select("is_admin, is_manager")
       .eq("user_id", user?.id)
       .maybeSingle();
 
@@ -80,7 +80,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push(emp.is_admin ? "/admin" : "/employee");
+    router.push(emp.is_admin || emp.is_manager ? "/admin" : "/employee");
     router.refresh();
   };
 

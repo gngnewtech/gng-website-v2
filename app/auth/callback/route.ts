@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   // 查这个人在员工表里的身份
   const { data: emp } = await supabase
     .from("employees")
-    .select("is_admin")
+    .select("is_admin, is_manager")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -43,6 +43,6 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/login?error=not_registered`);
   }
 
-  // 管理员进后台，普通员工进个人任务页
-  return NextResponse.redirect(`${origin}/${emp.is_admin ? "admin" : "employee"}`);
+  // 管理员、经理进后台，普通员工进个人任务页
+  return NextResponse.redirect(`${origin}/${emp.is_admin || emp.is_manager ? "admin" : "employee"}`);
 }

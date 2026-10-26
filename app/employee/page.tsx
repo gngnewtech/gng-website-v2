@@ -11,12 +11,12 @@ export default async function EmployeePage() {
 
   const { data: me } = await supabase
     .from("employees")
-    .select("id, name, role, dept, email, is_admin")
+    .select("id, name, role, dept, email, is_admin, is_manager")
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (!me) redirect("/login");
-  if (me.is_admin) redirect("/admin");
+  if (me.is_admin) redirect("/admin"); // 经理可以进来看自己的任务，不跳走
 
   // 我的任务 + 其下所有子任务（多层）
   const { data: tasks } = await (supabase as any).rpc("get_my_tasks", { p_uid: me.id });

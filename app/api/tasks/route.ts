@@ -8,7 +8,7 @@ async function getContext() {
   if (!user) return { supabase: null, me: null };
   const { data: me } = await supabase
     .from("employees")
-    .select("id, is_admin")
+    .select("id, is_admin, is_manager")
     .eq("user_id", user.id)
     .maybeSingle();
   return { supabase, me };
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
 
   if (action === "assign") {
     const { name, important, urgent } = body;
-    const { assignee_id, parent_id, start_at } = body;
+    const { assignee_id, parent_id, start_at, is_private } = body;
     if (!name?.trim()) return NextResponse.json({ error: "缺少任务内容" }, { status: 400 });
     // 通过 create_task 函数建任务：可指定负责人(assignee_id)、上级任务(parent_id)、开始时间(start_at)
     const { error: e } = await (supabase as any).rpc("create_task", {
@@ -33,13 +33,15 @@ export async function POST(req: Request) {
       p_important: !!important,
       p_urgent: !!urgent,
       p_start_at: start_at || null,
+      p_private: !!is_private, // 只有管理员能建私密任务（数据库会校验）
     });
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
 
   if (action === "transfer") {
-    if (!me.is_admin) return NextResponse.json({ error: "无权限" }, { status: 403 });
+    // 管理员、经理可转交（经理看不到的任务由数据库 RLS 拦住）
+    if (!me.is_admin && !me.is_manager) return NextResponse.json({ error: "无权限" }, { status: 403 });
     const { task_id, to_assignee_id } = body;
     const { error: e } = await supabase
       .from("tasks")
@@ -88,7 +90,7 @@ export async function POST(req: Request) {
     const { task_id } = body;
     // 员工确认收到自己的任务
     let uq = supabase.from("tasks").update({ acknowledged: true }).eq("id", task_id);
-    if (!me.is_admin) uq = uq.eq("assignee_id", me.id);
+    if (!me.is_admin && !me.is_manager) uq = uq.eq("assignee_id", me.id);
     const { error: e } = await uq;
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
     return NextResponse.json({ ok: true });
@@ -96,9 +98,9 @@ export async function POST(req: Request) {
 
   if (action === "delete") {
     const { task_id } = body;
-    // 管理员可删任意任务；普通员工只能删自己的（删父任务会级联删子任务）
+    // 管理员、经理可删看得到的任务；普通员工只能删自己的（删父任务会级联删子任务）
     let dq = supabase.from("tasks").delete().eq("id", task_id);
-    if (!me.is_admin) dq = dq.eq("assignee_id", me.id);
+    if (!me.is_admin && !me.is_manager) dq = dq.eq("assignee_id", me.id);
     const { error: e } = await dq;
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
     return NextResponse.json({ ok: true });

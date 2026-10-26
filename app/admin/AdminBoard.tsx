@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
-type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null };
+type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean };
 type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean };
 
 function stats(tasks: Task[]) {
@@ -53,6 +53,11 @@ const QUAD_META: Record<Quadrant, { label: string; color: string; bg: string; ra
 function byPriority(a: Task, b: Task) {
   return QUAD_META[quadrantOf(a)].rank - QUAD_META[quadrantOf(b)].rank;
 }
+// 私密任务标记（只有管理员会拿到私密任务，经理那边数据库已过滤）
+function PrivateBadge({ t }: { t: Task }) {
+  if (!t.is_private) return null;
+  return <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: "#7c3aed", background: "#f5f3ff", whiteSpace: "nowrap", flex: "none" }}>🔒 私密</span>;
+}
 function QuadBadge({ t }: { t: Task }) {
   const q = QUAD_META[quadrantOf(t)];
   return <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: q.color, background: q.bg, whiteSpace: "nowrap" }}>{q.label}</span>;
@@ -69,7 +74,7 @@ async function api(body: any) {
   return res.ok;
 }
 
-export default function AdminBoard({ employees, tasks, adminEmail }: { employees: Employee[]; tasks: Task[]; adminEmail: string }) {
+export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; adminEmail: string; isAdmin: boolean }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -90,9 +95,9 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
 
   const filtered = employees.filter((e) => e.name.includes(query) || (e.role ?? "").includes(query) || (e.dept ?? "").includes(query));
 
-  const doAssign = async (empId: string, name: string, important: boolean, urgent: boolean) => {
+  const doAssign = async (empId: string, name: string, important: boolean, urgent: boolean, isPrivate: boolean) => {
     setBusy(true);
-    await api({ action: "assign", assignee_id: empId, name, important, urgent });
+    await api({ action: "assign", assignee_id: empId, name, important, urgent, is_private: isAdmin && isPrivate });
     setBusy(false); setAssignOpen(false); router.refresh();
   };
   const doTransfer = async (taskId: string, toId: string) => {
@@ -103,7 +108,7 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
   const doCycle = async (task: Task) => {
     // 已完成再点 → 复制一条新的「待开始」任务给同一员工，原任务保持已完成
     if (task.state === "done") {
-      await api({ action: "assign", assignee_id: task.assignee_id, name: task.name, important: task.important, urgent: task.urgent });
+      await api({ action: "assign", assignee_id: task.assignee_id, name: task.name, important: task.important, urgent: task.urgent, is_private: isAdmin && !!task.is_private });
       router.refresh();
       return;
     }
@@ -139,6 +144,8 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
         <div style={{ maxWidth: 960, margin: "0 auto", padding: "0 24px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ color: "#fbbf24", fontFamily: "ui-monospace,monospace", letterSpacing: ".16em", fontSize: 13 }}>● ADMIN.GNGNT.COM</span>
           <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 14 }}>
+            <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 999, border: "1px solid #334155", color: "#fbbf24" }}>{isAdmin ? "管理员" : "经理"}</span>
+            {!isAdmin && <a href="/employee" style={{ color: "#cbd5e1", textDecoration: "none" }}>我的任务</a>}
             <span style={{ color: "#cbd5e1" }}>{adminEmail}</span>
             <button onClick={logout} style={{ background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", fontSize: 14 }}>退出</button>
           </div>
@@ -200,6 +207,7 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
                         {pending.map((x) => (
                           <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
                             <QuadBadge t={x} />
+                            <PrivateBadge t={x} />
                             <span style={{ color: "#334155" }}>{x.name}</span>
                             <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: TASK_TONE[x.state].color, background: TASK_TONE[x.state].bg }}>{TASK_LABEL[x.state]}</span>
                           </div>
@@ -217,7 +225,7 @@ export default function AdminBoard({ employees, tasks, adminEmail }: { employees
         )}
       </main>
 
-      {assignOpen && <AssignModal employees={employees} defaultId={assignFor} busy={busy} onClose={() => setAssignOpen(false)} onAssign={doAssign} />}
+      {assignOpen && <AssignModal employees={employees} defaultId={assignFor} busy={busy} canPrivate={isAdmin} onClose={() => setAssignOpen(false)} onAssign={doAssign} />}
       {transfer && <TransferModal task={transfer} employees={employees} busy={busy} onClose={() => setTransfer(null)} onConfirm={doTransfer} />}
       {confirmDelete && (
         <div style={overlay} onClick={() => setConfirmDelete(null)}>
@@ -277,6 +285,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onDelet
                   <button onClick={() => onCycle(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
                   <button onClick={() => onSetPriority(t, !t.important, t.urgent)} style={chipStyle(t.important, "#1d4ed8")}>重要</button>
                   <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
+                  <PrivateBadge t={t} />
                   <span style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
                   <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>备注</button>
                   <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13, flex: "none" }}>转交</button>
@@ -303,11 +312,12 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onDelet
   );
 }
 
-function AssignModal({ employees, defaultId, busy, onClose, onAssign }: any) {
+function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign }: any) {
   const [empId, setEmpId] = useState(defaultId ?? employees[0]?.id);
   const [name, setName] = useState("");
   const [important, setImportant] = useState(false);
   const [urgent, setUrgent] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false);
   const q: Quadrant = important && urgent ? 1 : important ? 2 : urgent ? 3 : 4;
   return (
     <div style={overlay} onClick={onClose}>
@@ -330,9 +340,15 @@ function AssignModal({ employees, defaultId, busy, onClose, onAssign }: any) {
         <div style={{ marginTop: 10, fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
           归入象限：<span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color: QUAD_META[q].color, background: QUAD_META[q].bg }}>{QUAD_META[q].label}</span>
         </div>
+        {canPrivate && (
+          <label style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#475569", cursor: "pointer" }}>
+            <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} style={{ width: 16, height: 16, accentColor: "#7c3aed" }} />
+            🔒 私密（经理看不到）
+          </label>
+        )}
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
-          <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim(), important, urgent)} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
+          <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim(), important, urgent, isPrivate)} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
         </div>
       </div>
     </div>
