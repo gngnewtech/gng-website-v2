@@ -30,6 +30,7 @@ const T = {
     subAdd: "+ 子任务", subPlaceholder: "子任务内容…", assignTo: "分配给", myself: "我自己", subConfirm: "添加子任务",
     ackReceive: "确认收到", pendingAck: "待确认", confirmed: "已确认", startTime: "开始时间",
     setTime: "时间", clearTime: "清除", optional: "可选",
+    switchedTo: "已切换为", copiedNew: "已复制一条新任务",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks",
@@ -48,6 +49,7 @@ const T = {
     subAdd: "+ Subtask", subPlaceholder: "Subtask…", assignTo: "Assign to", myself: "Myself", subConfirm: "Add subtask",
     ackReceive: "Got it", pendingAck: "Pending", confirmed: "Confirmed", startTime: "Start time",
     setTime: "Time", clearTime: "Clear", optional: "optional",
+    switchedTo: "Switched to", copiedNew: "Copied a new task",
   },
 };
 
@@ -167,6 +169,8 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const [newStart, setNewStart] = useState("");
   const [editingStart, setEditingStart] = useState<string | null>(null);
   const [startDraft, setStartDraft] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
   const [lang, setLang] = useState<"zh" | "en">("zh");
   useEffect(() => {
     let saved: string | null = null;
@@ -246,6 +250,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
       const ok = await api({ action: "assign", name: task.name, important: task.important, urgent: task.urgent, parent_id: task.parent_id });
       if (ok) router.refresh();
       else setTasks((prev) => prev.filter((x) => x.id !== temp.id));
+      showToast(t.copiedNew);
       return;
     }
     const order: TaskState[] = ["todo", "doing", "done"];
@@ -254,6 +259,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, state: next, done_at: next === "done" ? nowIso : null } : x)));
     const ok = await api({ action: "setState", task_id: task.id, state: next });
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
+    else showToast(`${t.switchedTo}「${t[next]}」`);
   };
 
   const setPriority = async (task: Task, imp: boolean, urg: boolean) => {
@@ -364,19 +370,16 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     return (
       <div style={{ background: mine ? "#fff" : "#faf5ff", border: `1px solid ${needsAck ? "#f59e0b" : "#e2e8f0"}`, borderLeft: `4px solid ${mine ? "#2563eb" : "#a855f7"}`, borderRadius: 10, overflow: "hidden" }}>
         <div className="emp-task">
-          {mine
-            ? <button onClick={() => cycle(x)} style={stateBtnStyle(x.state)}>{t[x.state]}</button>
-            : <span style={stateBadgeStyle(x.state)}>{t[x.state]}</span>}
+          {x.start_at && <span style={startBadgeStyle}>🕐 {fmtDateTime(x.start_at)}</span>}
+          {mine && <button onClick={() => (editingStart === x.id ? setEditingStart(null) : openStart(x))} style={timeBtnStyle(!!x.start_at)}>{t.setTime}</button>}
+          {mine && <button onClick={() => setPriority(x, !x.important, x.urgent)} style={chipStyle(x.important, "#1d4ed8")}>{t.important}</button>}
+          {mine && <button onClick={() => setPriority(x, x.important, !x.urgent)} style={chipStyle(x.urgent, "#be123c")}>{t.urgent}</button>}
+          {mine && needsAck && <button onClick={() => acknowledge(x)} style={ackBtnStyle}>{t.ackReceive}</button>}
           <span className="emp-task-name" style={{ textDecoration: x.state === "done" ? "line-through" : "none", color: x.state === "done" ? "#94a3b8" : "#334155" }}>{x.name}</span>
           <div className="emp-actions">
-            {x.start_at && <span style={startBadgeStyle}>🕐 {fmtDateTime(x.start_at)}</span>}
             {mine ? (
               <>
-                {needsAck && <button onClick={() => acknowledge(x)} style={ackBtnStyle}>{t.ackReceive}</button>}
-                <button onClick={() => setPriority(x, !x.important, x.urgent)} style={chipStyle(x.important, "#1d4ed8")}>{t.important}</button>
-                <button onClick={() => setPriority(x, x.important, !x.urgent)} style={chipStyle(x.urgent, "#be123c")}>{t.urgent}</button>
                 <button onClick={() => (editing ? setEditingNote(null) : openNote(x))} style={noteBtnStyle(!!x.note)}>{t.note}</button>
-                <button onClick={() => (editingStart === x.id ? setEditingStart(null) : openStart(x))} style={timeBtnStyle(!!x.start_at)}>{t.setTime}</button>
                 <button onClick={() => (addingSubFor === x.id ? setAddingSubFor(null) : openSub(x))} style={subBtnStyle}>{t.subAdd}</button>
                 <button onClick={() => setConfirmDelete(x)} style={delBtnStyle}>{t.delete}</button>
               </>
@@ -387,6 +390,9 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
               </>
             )}
           </div>
+          {mine
+            ? <button onClick={() => cycle(x)} style={stateBtnStyle(x.state)}>{t[x.state]}</button>
+            : <span style={stateBadgeStyle(x.state)}>{t[x.state]}</span>}
         </div>
 
         {x.parent_id && (
@@ -542,6 +548,9 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
             </div>
           </div>
         </div>
+      )}
+      {toast && (
+        <div style={{ position: "fixed", left: "50%", bottom: 32, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "10px 18px", borderRadius: 999, fontSize: 14, zIndex: 100, boxShadow: "0 6px 20px rgba(15,23,42,.25)" }}>{toast}</div>
       )}
     </div>
   );
