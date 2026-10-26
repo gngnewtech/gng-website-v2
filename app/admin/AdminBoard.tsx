@@ -133,6 +133,10 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
     await api({ action: "setNote", task_id: taskId, note });
     router.refresh();
   };
+  const doSetStart = async (taskId: string, startIso: string | null) => {
+    await api({ action: "setStart", task_id: taskId, start_at: startIso });
+    router.refresh();
+  };
   const doDelete = async (task: Task) => {
     setConfirmDelete(null);
     await api({ action: "delete", task_id: task.id });
@@ -163,7 +167,7 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
       <main style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
         {selected ? (
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
-            onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote} onDelete={(t: Task) => setConfirmDelete(t)}
+            onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)}
             onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar} />
         ) : (
           <>
@@ -253,13 +257,26 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
   );
 }
 
-function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onDelete, onAssignHere, onTransfer, bar }: any) {
+function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetStart, onDelete, onAssignHere, onTransfer, bar }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort(byPriority);
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const openNote = (t: Task) => { setEditingNote(t.id); setNoteDraft(t.note ?? ""); };
   const saveNote = (t: Task) => { setEditingNote(null); onSetNote(t.id, noteDraft.trim()); };
+  const [editingStart, setEditingStart] = useState<string | null>(null);
+  const [startDraft, setStartDraft] = useState("");
+  const toLocalInput = (iso?: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const openStart = (t: Task) => { setEditingStart(t.id); setStartDraft(toLocalInput(t.start_at)); };
+  const saveStart = (t: Task, override?: string | null) => {
+    const iso = override !== undefined ? override : (startDraft ? new Date(startDraft).toISOString() : null);
+    setEditingStart(null); onSetStart(t.id, iso);
+  };
 
   return (
     <div>
@@ -298,6 +315,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onDelet
                   <span style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
                   <StartBadge t={t} />
                   <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>备注</button>
+                  <button onClick={() => (editingStart === t.id ? setEditingStart(null) : openStart(t))} style={{ fontSize: 13, padding: "3px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${t.start_at ? "#0369a1" : "#cbd5e1"}`, background: t.start_at ? "#0369a1" : "#fff", color: t.start_at ? "#fff" : "#475569", flex: "none" }}>时间</button>
                   <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13, flex: "none" }}>转交</button>
                   <button onClick={() => onDelete(t)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" }}>删除</button>
                 </div>
@@ -312,6 +330,15 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onDelet
                       <button onClick={() => saveNote(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
                       <button onClick={() => setEditingNote(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>取消</button>
                     </div>
+                  </div>
+                )}
+                {editingStart === t.id && (
+                  <div style={{ padding: "0 16px 14px 88px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: "#64748b" }}>开始时间</span>
+                    <input type="datetime-local" value={startDraft} onChange={(e) => setStartDraft(e.target.value)} style={{ padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none" }} />
+                    <button onClick={() => saveStart(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
+                    <button onClick={() => saveStart(t, null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>清除</button>
+                    <button onClick={() => setEditingStart(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>取消</button>
                   </div>
                 )}
               </div>
