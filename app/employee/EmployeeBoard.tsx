@@ -29,6 +29,7 @@ const T = {
     deleteFail: "删除失败：",
     subAdd: "+ 子任务", subPlaceholder: "子任务内容…", assignTo: "分配给", myself: "我自己", subConfirm: "添加子任务",
     ackReceive: "确认收到", pendingAck: "待确认", confirmed: "已确认", startTime: "开始时间",
+    setTime: "时间", clearTime: "清除", optional: "可选",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks",
@@ -46,6 +47,7 @@ const T = {
     deleteFail: "Delete failed: ",
     subAdd: "+ Subtask", subPlaceholder: "Subtask…", assignTo: "Assign to", myself: "Myself", subConfirm: "Add subtask",
     ackReceive: "Got it", pendingAck: "Pending", confirmed: "Confirmed", startTime: "Start time",
+    setTime: "Time", clearTime: "Clear", optional: "optional",
   },
 };
 
@@ -135,6 +137,7 @@ const assigneeTagStyle: React.CSSProperties = { fontSize: 12, color: "#475569", 
 const ackPendStyle: React.CSSProperties = { fontSize: 11, color: "#b45309", background: "#fffbeb", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" };
 const ackDoneStyle: React.CSSProperties = { fontSize: 11, color: "#047857", background: "#ecfdf5", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" };
 const startBadgeStyle: React.CSSProperties = { fontSize: 11, color: "#0369a1", background: "#f0f9ff", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" };
+const timeBtnStyle = (has: boolean): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${has ? "#0369a1" : "#e2e8f0"}`, background: has ? "#0369a1" : "#fff", color: has ? "#fff" : "#94a3b8", whiteSpace: "nowrap", flex: "none" });
 const fieldStyle: React.CSSProperties = { width: "100%", padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
 const selectStyle: React.CSSProperties = { padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none" };
 const smallPrimary: React.CSSProperties = { background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" };
@@ -161,6 +164,9 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const [subImportant, setSubImportant] = useState(false);
   const [subUrgent, setSubUrgent] = useState(false);
   const [subStart, setSubStart] = useState("");
+  const [newStart, setNewStart] = useState("");
+  const [editingStart, setEditingStart] = useState<string | null>(null);
+  const [startDraft, setStartDraft] = useState("");
   const [lang, setLang] = useState<"zh" | "en">("zh");
   useEffect(() => {
     let saved: string | null = null;
@@ -190,6 +196,12 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     const hh = String(d.getHours()).padStart(2, "0");
     const mm = String(d.getMinutes()).padStart(2, "0");
     return lang === "zh" ? `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}` : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  };
+  const toLocalInput = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
   const nameById = useMemo(() => { const m: Record<string, string> = {}; tasks.forEach((x) => { m[x.id] = x.name; }); return m; }, [tasks]);
@@ -265,6 +277,15 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
   };
 
+  const openStart = (task: Task) => { setEditingStart(task.id); setStartDraft(toLocalInput(task.start_at)); };
+  const saveStart = async (task: Task, override?: string | null) => {
+    const iso = override !== undefined ? override : (startDraft ? new Date(startDraft).toISOString() : null);
+    setEditingStart(null);
+    setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, start_at: iso } : x)));
+    const ok = await api({ action: "setStart", task_id: task.id, start_at: iso });
+    if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
+  };
+
   // 收集某任务下所有子孙任务的 id（用于连带删除，深层在前）
   const collectDescendants = (rootId: string): string[] => {
     const out: string[] = [];
@@ -321,15 +342,16 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     if (names.length === 0) return;
     setBusy(true);
     setNewTask("");
-    const temps: Task[] = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo", done_at: null, important, urgent, note: null, assignee_id: me.id, parent_id: null, created_by: me.id, acknowledged: true, start_at: null }));
+    const startIso = newStart ? new Date(newStart).toISOString() : null;
+    const temps: Task[] = names.map((name, i) => ({ id: "temp-" + Date.now() + "-" + i, name, state: "todo", done_at: null, important, urgent, note: null, assignee_id: me.id, parent_id: null, created_by: me.id, acknowledged: true, start_at: startIso }));
     setTasks((prev) => [...prev, ...temps]);
     let allOk = true;
     for (const name of names) {
-      const ok = await api({ action: "assign", name, important, urgent });
+      const ok = await api({ action: "assign", name, important, urgent, start_at: startIso });
       if (!ok) allOk = false;
     }
     setBusy(false);
-    if (allOk) router.refresh();
+    if (allOk) { setNewStart(""); router.refresh(); }
     else { setNewTask(names.join("\n")); router.refresh(); }
   };
 
@@ -354,6 +376,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
                 <button onClick={() => setPriority(x, !x.important, x.urgent)} style={chipStyle(x.important, "#1d4ed8")}>{t.important}</button>
                 <button onClick={() => setPriority(x, x.important, !x.urgent)} style={chipStyle(x.urgent, "#be123c")}>{t.urgent}</button>
                 <button onClick={() => (editing ? setEditingNote(null) : openNote(x))} style={noteBtnStyle(!!x.note)}>{t.note}</button>
+                <button onClick={() => (editingStart === x.id ? setEditingStart(null) : openStart(x))} style={timeBtnStyle(!!x.start_at)}>{t.setTime}</button>
                 <button onClick={() => (addingSubFor === x.id ? setAddingSubFor(null) : openSub(x))} style={subBtnStyle}>{t.subAdd}</button>
                 <button onClick={() => setConfirmDelete(x)} style={delBtnStyle}>{t.delete}</button>
               </>
@@ -380,6 +403,15 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
               <button onClick={() => saveNote(x)} style={smallPrimary}>{t.save}</button>
               <button onClick={() => setEditingNote(null)} style={smallGhost}>{t.cancel}</button>
             </div>
+          </div>
+        )}
+        {editingStart === x.id && (
+          <div className="emp-note" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "#64748b" }}>{t.startTime}</span>
+            <input type="datetime-local" value={startDraft} onChange={(e) => setStartDraft(e.target.value)} style={selectStyle} />
+            <button onClick={() => saveStart(x)} style={smallPrimary}>{t.save}</button>
+            <button onClick={() => saveStart(x, null)} style={smallGhost}>{t.clearTime}</button>
+            <button onClick={() => setEditingStart(null)} style={smallGhost}>{t.cancel}</button>
           </div>
         )}
         {addingSubFor === x.id && (
@@ -451,6 +483,13 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
           <button type="button" onClick={() => setUrgent((v) => !v)} style={toggleStyle(urgent, "#be123c")}>{urgent ? "✓ " : ""}{t.urgent}</button>
           <span style={{ fontSize: 12, color: "#94a3b8" }}>→</span>
           <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color: QUAD_META[q].color, background: QUAD_META[q].bg }}>{t[QUAD_META[q].key]}</span>
+        </div>
+
+        <div className="emp-prio" style={{ marginTop: 8 }}>
+          <span style={{ fontSize: 13, color: "#64748b" }}>{t.startTime}：</span>
+          <input type="datetime-local" value={newStart} onChange={(e) => setNewStart(e.target.value)} style={selectStyle} />
+          {newStart && <button type="button" onClick={() => setNewStart("")} style={{ ...smallGhost, padding: "4px 10px" }}>{t.clearTime}</button>}
+          <span style={{ fontSize: 11, color: "#94a3b8" }}>{t.optional}</span>
         </div>
 
         <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#64748b", margin: "0 0 12px" }}>
