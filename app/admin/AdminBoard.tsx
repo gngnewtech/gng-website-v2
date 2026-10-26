@@ -95,9 +95,9 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
 
   const filtered = employees.filter((e) => e.name.includes(query) || (e.role ?? "").includes(query) || (e.dept ?? "").includes(query));
 
-  const doAssign = async (empId: string, name: string, important: boolean, urgent: boolean, isPrivate: boolean) => {
+  const doAssign = async (empId: string, name: string, important: boolean, urgent: boolean, isPrivate: boolean, startAt: string) => {
     setBusy(true);
-    await api({ action: "assign", assignee_id: empId, name, important, urgent, is_private: isAdmin && isPrivate });
+    await api({ action: "assign", assignee_id: empId, name, important, urgent, is_private: isAdmin && isPrivate, start_at: startAt ? new Date(startAt).toISOString() : null });
     setBusy(false); setAssignOpen(false); router.refresh();
   };
   const doTransfer = async (taskId: string, toId: string) => {
@@ -318,6 +318,7 @@ function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign
   const [important, setImportant] = useState(false);
   const [urgent, setUrgent] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
+  const [startAt, setStartAt] = useState("");
   const q: Quadrant = important && urgent ? 1 : important ? 2 : urgent ? 3 : 4;
   return (
     <div style={overlay} onClick={onClose}>
@@ -340,6 +341,9 @@ function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign
         <div style={{ marginTop: 10, fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
           归入象限：<span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color: QUAD_META[q].color, background: QUAD_META[q].bg }}>{QUAD_META[q].label}</span>
         </div>
+        <div style={{ height: 16 }} />
+        <label style={lbl}>开始时间（可留空）</label>
+        <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} style={field} />
         {canPrivate && (
           <label style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#475569", cursor: "pointer" }}>
             <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} style={{ width: 16, height: 16, accentColor: "#7c3aed" }} />
@@ -348,7 +352,7 @@ function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign
         )}
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
-          <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim(), important, urgent, isPrivate)} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
+          <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim(), important, urgent, isPrivate, startAt)} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
         </div>
       </div>
     </div>
