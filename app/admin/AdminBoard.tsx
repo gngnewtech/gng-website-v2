@@ -259,7 +259,11 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
 
 function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetStart, onDelete, onAssignHere, onTransfer, bar }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
-  const sorted = [...tasks].sort(byPriority);
+  const sorted = [...tasks].sort((a, b) => {
+    // 已完成的排到最后，其余按重要紧急排序
+    const ad = a.state === "done" ? 1 : 0, bd = b.state === "done" ? 1 : 0;
+    return ad !== bd ? ad - bd : byPriority(a, b);
+  });
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const openNote = (t: Task) => { setEditingNote(t.id); setNoteDraft(t.note ?? ""); };
