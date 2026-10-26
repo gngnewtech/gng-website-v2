@@ -25,7 +25,7 @@ export default async function AdminPage() {
 
   const { data: tasks } = await supabase
     .from("tasks")
-    .select("id, assignee_id, name, state, important, urgent, note, is_private, created_at")
+    .select("id, assignee_id, name, state, important, urgent, note, is_private, start_at, created_at")
     .order("created_at", { ascending: true });
 
   return (

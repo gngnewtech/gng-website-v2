@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
-type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean };
+type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null };
 type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean };
 
 function stats(tasks: Task[]) {
@@ -29,6 +29,14 @@ const META: Record<Status, { label: string; color: string; bg: string; bar: stri
   absent: { label: "未打卡", color: "#64748b", bg: "#f1f5f9", bar: "#cbd5e1" },
 };
 const TASK_LABEL: Record<TaskState, string> = { todo: "待开始", doing: "进行中", done: "已完成" };
+// 开始时间标签（按本地时间显示）
+function StartBadge({ t }: { t: Task }) {
+  if (!t.start_at) return null;
+  const d = new Date(t.start_at);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const txt = `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return <span style={{ fontSize: 11, color: "#0369a1", background: "#f0f9ff", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" }}>🕐 {txt}</span>;
+}
 const TASK_TONE: Record<TaskState, { color: string; bg: string }> = {
   todo: { color: "#64748b", bg: "#f1f5f9" },
   doing: { color: "#b45309", bg: "#fffbeb" },
@@ -209,6 +217,7 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
                             <QuadBadge t={x} />
                             <PrivateBadge t={x} />
                             <span style={{ color: "#334155" }}>{x.name}</span>
+                            <StartBadge t={x} />
                             <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: TASK_TONE[x.state].color, background: TASK_TONE[x.state].bg }}>{TASK_LABEL[x.state]}</span>
                           </div>
                         ))}
@@ -287,6 +296,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onDelet
                   <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
                   <PrivateBadge t={t} />
                   <span style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
+                  <StartBadge t={t} />
                   <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>备注</button>
                   <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13, flex: "none" }}>转交</button>
                   <button onClick={() => onDelete(t)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" }}>删除</button>
