@@ -91,6 +91,8 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
   const [transfer, setTransfer] = useState<Task | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
   const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
 
   const tasksOf = (empId: string) => tasks.filter((t) => t.assignee_id === empId);
   const selected = employees.find((e) => e.id === selectedId) ?? null;
@@ -117,12 +119,14 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
     // 已完成再点 → 复制一条新的「待开始」任务给同一员工，原任务保持已完成
     if (task.state === "done") {
       await api({ action: "assign", assignee_id: task.assignee_id, name: task.name, important: task.important, urgent: task.urgent, is_private: isAdmin && !!task.is_private });
+      showToast("已复制一条新任务到「待开始」");
       router.refresh();
       return;
     }
     const order: TaskState[] = ["todo", "doing", "done"];
     const next = order[(order.indexOf(task.state) + 1) % 3];
     await api({ action: "setState", task_id: task.id, state: next });
+    showToast(`已切换为「${TASK_LABEL[next]}」`);
     router.refresh();
   };
   const doSetPriority = async (task: Task, important: boolean, urgent: boolean) => {
@@ -253,6 +257,9 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
           </div>
         </div>
       )}
+      {toast && (
+        <div style={{ position: "fixed", left: "50%", bottom: 32, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "10px 18px", borderRadius: 999, fontSize: 14, zIndex: 100, boxShadow: "0 6px 20px rgba(15,23,42,.25)" }}>{toast}</div>
+      )}
     </div>
   );
 }
@@ -312,16 +319,16 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
             return (
               <div key={t.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
-                  <button onClick={() => onCycle(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
+                  <StartBadge t={t} />
+                  <button onClick={() => (editingStart === t.id ? setEditingStart(null) : openStart(t))} style={{ fontSize: 13, padding: "3px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${t.start_at ? "#0369a1" : "#cbd5e1"}`, background: t.start_at ? "#0369a1" : "#fff", color: t.start_at ? "#fff" : "#475569", flex: "none" }}>时间</button>
                   <button onClick={() => onSetPriority(t, !t.important, t.urgent)} style={chipStyle(t.important, "#1d4ed8")}>重要</button>
                   <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
                   <PrivateBadge t={t} />
                   <span style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
-                  <StartBadge t={t} />
                   <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>备注</button>
-                  <button onClick={() => (editingStart === t.id ? setEditingStart(null) : openStart(t))} style={{ fontSize: 13, padding: "3px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${t.start_at ? "#0369a1" : "#cbd5e1"}`, background: t.start_at ? "#0369a1" : "#fff", color: t.start_at ? "#fff" : "#475569", flex: "none" }}>时间</button>
                   <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13, flex: "none" }}>转交</button>
                   <button onClick={() => onDelete(t)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" }}>删除</button>
+                  <button onClick={() => onCycle(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
                 </div>
                 {t.note && !editing && (
                   <div style={{ padding: "0 16px 12px 88px", fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {t.note}</div>
