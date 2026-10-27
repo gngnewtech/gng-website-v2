@@ -31,6 +31,7 @@ const T = {
     ackReceive: "确认收到", pendingAck: "待确认", confirmed: "已确认", startTime: "开始时间",
     setTime: "时间", clearTime: "清除", optional: "可选",
     switchedTo: "已切换为", copiedNew: "已复制一条新任务",
+    notif: "提醒", notifNew: "新任务", notifStarted: "已到开始时间", notifEmpty: "暂无提醒", markAllRead: "全部已读", notifFrom: "来自",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks",
@@ -50,6 +51,7 @@ const T = {
     ackReceive: "Got it", pendingAck: "Pending", confirmed: "Confirmed", startTime: "Start time",
     setTime: "Time", clearTime: "Clear", optional: "optional",
     switchedTo: "Switched to", copiedNew: "Copied a new task",
+    notif: "Reminders", notifNew: "New task", notifStarted: "Start time reached", notifEmpty: "No reminders", markAllRead: "Mark all read", notifFrom: "from",
   },
 };
 
@@ -170,6 +172,12 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const [editingStart, setEditingStart] = useState<string | null>(null);
   const [startDraft, setStartDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [seen, setSeen] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try { const raw = localStorage.getItem("gng_notif_seen"); if (raw) setSeen(new Set(JSON.parse(raw))); } catch {}
+  }, []);
+  const saveSeen = (next: Set<string>) => { setSeen(next); try { localStorage.setItem("gng_notif_seen", JSON.stringify([...next])); } catch {} };
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
   const [lang, setLang] = useState<"zh" | "en">("zh");
   useEffect(() => {
@@ -239,6 +247,22 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const total = myActive.length;
   const done = myActive.filter((x) => x.state === "done").length;
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+
+  // 站内提醒：新派给我的未确认任务 + 已到开始时间的未完成任务（打开页面即可见）
+  const notifs = useMemo(() => {
+    const now = Date.now();
+    const list: { key: string; type: "new" | "start"; name: string; at: string | null }[] = [];
+    tasks.forEach((x) => {
+      if (x.assignee_id !== me.id || x.state === "done") return;
+      if (x.created_by && x.created_by !== me.id && !x.acknowledged)
+        list.push({ key: "new:" + x.id, type: "new", name: x.name, at: null });
+      if (x.start_at && new Date(x.start_at).getTime() <= now)
+        list.push({ key: "start:" + x.id, type: "start", name: x.name, at: x.start_at });
+    });
+    return list;
+  }, [tasks, me.id]);
+  const unreadCount = notifs.filter((n) => !seen.has(n.key)).length;
+  const markAllRead = () => { const next = new Set(seen); notifs.forEach((n) => next.add(n.key)); saveSeen(next); };
 
   const q: Quadrant = important && urgent ? 1 : important ? 2 : urgent ? 3 : 4;
 
@@ -452,6 +476,37 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
         <div className="emp-head-in">
           <span style={{ color: "#fbbf24", fontFamily: "ui-monospace,monospace", letterSpacing: ".08em", fontSize: 13 }}>● {t.brand}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14 }}>
+            <div style={{ position: "relative" }}>
+              <button onClick={() => { setNotifOpen((v) => !v); if (!notifOpen && unreadCount > 0) markAllRead(); }}
+                style={{ background: "none", border: "none", color: "#f1f5f9", cursor: "pointer", fontSize: 18, lineHeight: 1, position: "relative", padding: 2 }} aria-label={t.notif}>
+                🔔
+                {unreadCount > 0 && <span style={{ position: "absolute", top: -4, right: -6, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>{unreadCount}</span>}
+              </button>
+              {notifOpen && (
+                <>
+                  <div onClick={() => setNotifOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                  <div style={{ position: "absolute", right: 0, top: 32, width: 300, maxWidth: "80vw", background: "#fff", color: "#1e293b", borderRadius: 12, boxShadow: "0 12px 30px rgba(0,0,0,.25)", zIndex: 50, overflow: "hidden" }}>
+                    <div style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f7", fontWeight: 700, fontSize: 14 }}>{t.notif}</div>
+                    <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                      {notifs.length === 0 ? (
+                        <div style={{ padding: "18px 14px", color: "#94a3b8", fontSize: 13, textAlign: "center" }}>{t.notifEmpty}</div>
+                      ) : notifs.map((n) => (
+                        <div key={n.key} style={{ padding: "10px 14px", borderBottom: "1px solid #f4f6f9", display: "flex", gap: 8, alignItems: "flex-start" }}>
+                          <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, whiteSpace: "nowrap", flex: "none", color: n.type === "new" ? "#7c3aed" : "#0369a1", background: n.type === "new" ? "#f5f3ff" : "#f0f9ff" }}>{n.type === "new" ? t.notifNew : t.notifStarted}</span>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, color: "#334155", wordBreak: "break-word" }}>{n.name}</div>
+                            {n.at && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>🕐 {fmtDateTime(n.at)}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {notifs.length > 0 && (
+                      <button onClick={markAllRead} style={{ width: "100%", padding: "10px 14px", border: "none", borderTop: "1px solid #eef2f7", background: "#fff", color: "#2563eb", fontSize: 13, cursor: "pointer" }}>{t.markAllRead}</button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
             <span style={{ color: "#cbd5e1" }}>{me.name}</span>
             <button onClick={logout} style={{ background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", fontSize: 14 }}>{t.logout}</button>
           </div>
