@@ -61,6 +61,15 @@ const QUAD_META: Record<Quadrant, { label: string; color: string; bg: string; ra
 function byPriority(a: Task, b: Task) {
   return QUAD_META[quadrantOf(a)].rank - QUAD_META[quadrantOf(b)].rank;
 }
+// 排序：紧急优先 → 有时间的在前(按时间从早到晚) → 没时间的在后 → 其余按重要紧急
+function byTimeUrgent(a: Task, b: Task) {
+  const au = a.urgent ? 0 : 1, bu = b.urgent ? 0 : 1;
+  if (au !== bu) return au - bu;
+  const at = a.start_at ? 0 : 1, bt = b.start_at ? 0 : 1;
+  if (at !== bt) return at - bt;
+  if (a.start_at && b.start_at && a.start_at !== b.start_at) return a.start_at < b.start_at ? -1 : 1;
+  return byPriority(a, b);
+}
 // 私密任务标记（只有管理员会拿到私密任务，经理那边数据库已过滤）
 function PrivateBadge({ t }: { t: Task }) {
   if (!t.is_private) return null;
@@ -228,7 +237,7 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {filtered.map((emp) => {
                 const t = tasksOf(emp.id); const s = stats(t); const m = META[statusOf(emp, t)];
-                const pending = t.filter((x) => x.state !== "done").sort(byPriority);
+                const pending = t.filter((x) => x.state !== "done").sort(byTimeUrgent);
                 return (
                   <button key={emp.id} onClick={() => setSelectedId(emp.id)} style={{ ...rowStyle, alignItems: "stretch", flexDirection: "column", gap: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 16, width: "100%" }}>
@@ -299,9 +308,9 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
 function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetStart, onDelete, onAssignHere, onTransfer, bar, isAdmin, onManageAccount }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort((a, b) => {
-    // 已完成的排到最后，其余按重要紧急排序
+    // 已完成的排到最后；其余：紧急优先 → 有时间的按时间 → 无时间的在后
     const ad = a.state === "done" ? 1 : 0, bd = b.state === "done" ? 1 : 0;
-    return ad !== bd ? ad - bd : byPriority(a, b);
+    return ad !== bd ? ad - bd : byTimeUrgent(a, b);
   });
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
