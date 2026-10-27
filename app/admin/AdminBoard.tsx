@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
@@ -101,8 +101,10 @@ async function empApi(body: any): Promise<{ ok: boolean; error?: string; created
   return { ok: res.ok, error: data?.error, created: data?.created };
 }
 
-export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; adminEmail: string; isAdmin: boolean }) {
+export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; adminEmail: string; isAdmin: boolean }) {
   const router = useRouter();
+  const [tasks, setTasks] = useState<Task[]>(tasksProp);
+  useEffect(() => { setTasks(tasksProp); }, [tasksProp]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -139,15 +141,18 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
   const doCycle = async (task: Task) => {
     // 已完成再点 → 复制一条新的「待开始」任务给同一员工，原任务保持已完成
     if (task.state === "done") {
-      await api({ action: "assign", assignee_id: task.assignee_id, name: task.name, important: task.important, urgent: task.urgent, is_private: isAdmin && !!task.is_private });
       showToast("已复制一条新任务到「待开始」");
+      await api({ action: "assign", assignee_id: task.assignee_id, name: task.name, important: task.important, urgent: task.urgent, is_private: isAdmin && !!task.is_private });
       router.refresh();
       return;
     }
     const order: TaskState[] = ["todo", "doing", "done"];
     const next = order[(order.indexOf(task.state) + 1) % 3];
-    await api({ action: "setState", task_id: task.id, state: next });
+    // 先本地立即切换，点一下马上变；再同步后端
+    setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, state: next, done_at: next === "done" ? new Date().toISOString() : null } : x)));
     showToast(`已切换为「${TASK_LABEL[next]}」`);
+    const ok = await api({ action: "setState", task_id: task.id, state: next });
+    if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
     router.refresh();
   };
   const doSetPriority = async (task: Task, important: boolean, urgent: boolean) => {
@@ -297,7 +302,7 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
         </div>
       )}
       {toast && (
-        <div style={{ position: "fixed", left: "50%", bottom: 32, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "10px 18px", borderRadius: 999, fontSize: 14, zIndex: 100, boxShadow: "0 6px 20px rgba(15,23,42,.25)" }}>{toast}</div>
+        <div style={{ position: "fixed", left: "50%", top: 72, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "12px 22px", borderRadius: 999, fontSize: 15, fontWeight: 600, zIndex: 100, boxShadow: "0 10px 30px rgba(15,23,42,.35)", display: "flex", alignItems: "center", gap: 8 }}>✓ {toast}</div>
       )}
       {credsFor && <CredentialsModal emp={credsFor} busy={busy} onClose={() => setCredsFor(null)} onSave={doSetCredentials} />}
       {addOpen && <AddEmployeeModal onClose={() => setAddOpen(false)} onSave={doAddEmployee} />}

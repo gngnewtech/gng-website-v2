@@ -605,7 +605,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
         </div>
       )}
       {toast && (
-        <div style={{ position: "fixed", left: "50%", bottom: 32, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "10px 18px", borderRadius: 999, fontSize: 14, zIndex: 100, boxShadow: "0 6px 20px rgba(15,23,42,.25)" }}>{toast}</div>
+        <div style={{ position: "fixed", left: "50%", top: 72, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "12px 22px", borderRadius: 999, fontSize: 15, fontWeight: 600, zIndex: 100, boxShadow: "0 10px 30px rgba(15,23,42,.35)", display: "flex", alignItems: "center", gap: 8 }}>✓ {toast}</div>
       )}
     </div>
   );
