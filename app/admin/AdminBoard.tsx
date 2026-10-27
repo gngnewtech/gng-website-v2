@@ -318,11 +318,17 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [flash, setFlash] = useState<{ id: string; msg: string } | null>(null);
   const cycleOrder: TaskState[] = ["todo", "doing", "done"];
-  const clickStatus = (t: Task) => {
+  const [confirmDone, setConfirmDone] = useState<Task | null>(null);
+  const runCycle = (t: Task) => {
     const msg = t.state === "done" ? "已复制" : "→ " + TASK_LABEL[cycleOrder[(cycleOrder.indexOf(t.state) + 1) % 3]];
     setFlash({ id: t.id, msg });
     setTimeout(() => setFlash((f) => (f && f.id === t.id ? null : f)), 1500);
     onCycle(t);
+  };
+  const clickStatus = (t: Task) => {
+    // 进行中 → 已完成 需二次确认，防误点
+    if (t.state === "doing") { setConfirmDone(t); return; }
+    runCycle(t);
   };
   const [noteDraft, setNoteDraft] = useState("");
   const openNote = (t: Task) => { setEditingNote(t.id); setNoteDraft(t.note ?? ""); };
@@ -414,6 +420,20 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
             );
           })}
       </div>
+
+      {confirmDone && (
+        <div style={overlay} onClick={() => setConfirmDone(null)}>
+          <div style={modal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>确认完成</h3>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "10px 0 4px" }}>确定把这条任务标记为「已完成」吗？</p>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: "0 0 20px", wordBreak: "break-word" }}>{confirmDone.name}</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setConfirmDone(null)} style={btnGhost}>取消</button>
+              <button onClick={() => { const t = confirmDone; setConfirmDone(null); runCycle(t); }} style={btnPrimary}>确认完成</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

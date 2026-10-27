@@ -32,6 +32,7 @@ const T = {
     setTime: "时间", clearTime: "清除", optional: "可选",
     switchedTo: "已切换为", copiedNew: "已复制一条新任务",
     notif: "提醒", notifNew: "新任务", notifStarted: "已到开始时间", notifEmpty: "暂无提醒", markAllRead: "全部已读", notifFrom: "来自",
+    doneTitle: "确认完成", doneMsg: "确定把这条任务标记为「已完成」吗？", doneConfirm: "确认完成",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks",
@@ -52,6 +53,7 @@ const T = {
     setTime: "Time", clearTime: "Clear", optional: "optional",
     switchedTo: "Switched to", copiedNew: "Copied a new task",
     notif: "Reminders", notifNew: "New task", notifStarted: "Start time reached", notifEmpty: "No reminders", markAllRead: "Mark all read", notifFrom: "from",
+    doneTitle: "Mark as done", doneMsg: "Mark this task as completed?", doneConfirm: "Confirm",
   },
 };
 
@@ -162,6 +164,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
+  const [confirmDone, setConfirmDone] = useState<Task | null>(null);
   const [addingSubFor, setAddingSubFor] = useState<string | null>(null);
   const [subName, setSubName] = useState("");
   const [subAssignee, setSubAssignee] = useState<string>(me.id);
@@ -266,7 +269,12 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
 
   const q: Quadrant = important && urgent ? 1 : important ? 2 : urgent ? 3 : 4;
 
-  const cycle = async (task: Task) => {
+  const cycle = (task: Task) => {
+    // 进行中 → 已完成 需二次确认，防误点
+    if (task.state === "doing") { setConfirmDone(task); return; }
+    doCycleNow(task);
+  };
+  const doCycleNow = async (task: Task) => {
     // 已完成再点 → 复制一条新的「待开始」任务（同一层级、归自己），原任务保持已完成
     if (task.state === "done") {
       const temp: Task = { id: "temp-" + Date.now(), name: task.name, state: "todo", done_at: null, important: task.important, urgent: task.urgent, note: null, assignee_id: me.id, parent_id: task.parent_id, created_by: me.id, acknowledged: true, start_at: null };
@@ -603,6 +611,19 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button onClick={() => setConfirmDelete(null)} style={empGhostBtn}>{t.cancel}</button>
               <button onClick={() => removeTask(confirmDelete)} style={empDangerBtn}>{t.delete}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmDone && (
+        <div style={empOverlay} onClick={() => setConfirmDone(null)}>
+          <div style={empModal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>{t.doneTitle}</h3>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "10px 0 4px" }}>{t.doneMsg}</p>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: "0 0 20px", wordBreak: "break-word" }}>{confirmDone.name}</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setConfirmDone(null)} style={empGhostBtn}>{t.cancel}</button>
+              <button onClick={() => { const task = confirmDone; setConfirmDone(null); doCycleNow(task); }} style={{ ...empDangerBtn, background: "#0f172a" }}>{t.doneConfirm}</button>
             </div>
           </div>
         </div>
