@@ -198,7 +198,7 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
           <>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
               <div>
-                <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>员工每日工作进度</h2>
+                <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>每日工作</h2>
                 <p style={{ fontSize: 14, color: "#64748b", marginTop: 2 }}>数据实时来自数据库</p>
               </div>
               <button onClick={() => { setAssignFor(undefined); setAssignOpen(true); }} style={btnPrimary}>+ 分配任务</button>
