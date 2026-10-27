@@ -61,13 +61,14 @@ const QUAD_META: Record<Quadrant, { label: string; color: string; bg: string; ra
 function byPriority(a: Task, b: Task) {
   return QUAD_META[quadrantOf(a)].rank - QUAD_META[quadrantOf(b)].rank;
 }
-// 排序：紧急优先 → 有时间的在前(按时间从早到晚) → 没时间的在后 → 其余按重要紧急
+// 排序：有时间的按时间从早到晚在前 → 没时间的在后 → 同一时间/都没时间时紧急优先，再按重要紧急
 function byTimeUrgent(a: Task, b: Task) {
-  const au = a.urgent ? 0 : 1, bu = b.urgent ? 0 : 1;
-  if (au !== bu) return au - bu;
   const at = a.start_at ? 0 : 1, bt = b.start_at ? 0 : 1;
-  if (at !== bt) return at - bt;
-  if (a.start_at && b.start_at && a.start_at !== b.start_at) return a.start_at < b.start_at ? -1 : 1;
+  if (at !== bt) return at - bt;                                   // 没时间的沉到后面
+  if (a.start_at && b.start_at && a.start_at !== b.start_at)        // 有时间的按时间从早到晚
+    return a.start_at < b.start_at ? -1 : 1;
+  const au = a.urgent ? 0 : 1, bu = b.urgent ? 0 : 1;              // 同一时间/都没时间：紧急优先
+  if (au !== bu) return au - bu;
   return byPriority(a, b);
 }
 // 私密任务标记（只有管理员会拿到私密任务，经理那边数据库已过滤）
