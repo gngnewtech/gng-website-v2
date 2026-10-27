@@ -104,6 +104,7 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
   const [toast, setToast] = useState<string | null>(null);
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
   const [credsFor, setCredsFor] = useState<Employee | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const tasksOf = (empId: string) => tasks.filter((t) => t.assignee_id === empId);
   const selected = employees.find((e) => e.id === selectedId) ?? null;
@@ -162,6 +163,11 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
       showToast(r.error || "操作失败");
     }
   };
+  const doAddEmployee = async (name: string, email: string, password: string, role: string, dept: string) => {
+    const r = await empApi({ action: "addEmployee", name, email, password, role, dept });
+    if (r.ok) { setAddOpen(false); showToast("已添加员工"); router.refresh(); }
+    else { showToast(r.error || "添加失败"); }
+  };
   const doDelete = async (task: Task) => {
     setConfirmDelete(null);
     await api({ action: "delete", task_id: task.id });
@@ -201,7 +207,10 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
                 <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>每日工作</h2>
                 <p style={{ fontSize: 14, color: "#64748b", marginTop: 2 }}>数据实时来自数据库</p>
               </div>
-              <button onClick={() => { setAssignFor(undefined); setAssignOpen(true); }} style={btnPrimary}>+ 分配任务</button>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {isAdmin && <button onClick={() => setAddOpen(true)} style={btnGhost}>+ 添加员工</button>}
+                <button onClick={() => { setAssignFor(undefined); setAssignOpen(true); }} style={btnPrimary}>+ 分配任务</button>
+              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
@@ -282,6 +291,7 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
         <div style={{ position: "fixed", left: "50%", bottom: 32, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "10px 18px", borderRadius: 999, fontSize: 14, zIndex: 100, boxShadow: "0 6px 20px rgba(15,23,42,.25)" }}>{toast}</div>
       )}
       {credsFor && <CredentialsModal emp={credsFor} busy={busy} onClose={() => setCredsFor(null)} onSave={doSetCredentials} />}
+      {addOpen && <AddEmployeeModal onClose={() => setAddOpen(false)} onSave={doAddEmployee} />}
     </div>
   );
 }
@@ -428,6 +438,43 @@ function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
           <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim(), important, urgent, isPrivate, startAt)} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddEmployeeModal({ onClose, onSave }: any) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("");
+  const [dept, setDept] = useState("");
+  const [saving, setSaving] = useState(false);
+  const canSave = name.trim() && email.trim() && password.length >= 6;
+  const submit = async () => { setSaving(true); await onSave(name.trim(), email.trim(), password, role.trim(), dept.trim()); setSaving(false); };
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={modal} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>添加员工</h3>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 20px" }}>新建普通员工，并同时开通登录账号。</p>
+        <label style={lbl}>姓名</label>
+        <input value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="例如：张伟" style={field} />
+        <div style={{ height: 14 }} />
+        <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ flex: 1 }}><label style={lbl}>岗位（可留空）</label><input value={role} onChange={(e) => setRole(e.target.value)} placeholder="例如：销售" style={field} /></div>
+          <div style={{ flex: 1 }}><label style={lbl}>部门（可留空）</label><input value={dept} onChange={(e) => setDept(e.target.value)} placeholder="例如：业务部" style={field} /></div>
+        </div>
+        <div style={{ height: 14 }} />
+        <label style={lbl}>登录邮箱</label>
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" style={field} />
+        <div style={{ height: 14 }} />
+        <label style={lbl}>初始密码（至少 6 位）</label>
+        <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 6 位" style={field} />
+        <p style={{ fontSize: 12, color: "#94a3b8", margin: "8px 0 0" }}>创建后请把登录邮箱和初始密码告知该员工。</p>
+        <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={btnGhost}>取消</button>
+          <button disabled={saving || !canSave} onClick={submit} style={{ ...btnPrimary, opacity: saving || !canSave ? 0.5 : 1 }}>{saving ? "提交中…" : "创建"}</button>
         </div>
       </div>
     </div>

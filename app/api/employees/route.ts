@@ -80,5 +80,47 @@ export async function POST(req: Request) {
     }
   }
 
+  if (action === "addEmployee") {
+    const name = (body.name ?? "").toString().trim();
+    const email = (body.email ?? "").toString().trim();
+    const password = (body.password ?? "").toString();
+    const role = (body.role ?? "").toString().trim() || null;
+    const dept = (body.dept ?? "").toString().trim() || null;
+
+    if (!name) return NextResponse.json({ error: "请填写姓名" }, { status: 400 });
+    if (!email) return NextResponse.json({ error: "请填写登录邮箱" }, { status: 400 });
+    if (!password || password.length < 6) return NextResponse.json({ error: "密码至少 6 位" }, { status: 400 });
+
+    let admin;
+    try { admin = createAdminClient(); }
+    catch (err: any) { return NextResponse.json({ error: err.message }, { status: 500 }); }
+
+    // 邮箱若已是员工，直接拦下
+    const { data: dup } = await admin.from("employees").select("id").eq("email", email).maybeSingle();
+    if (dup) return NextResponse.json({ error: "该邮箱已是员工" }, { status: 409 });
+
+    // 1) 建登录账号
+    const { data: created, error: ce } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+    if (ce) return NextResponse.json({ error: ce.message }, { status: 500 });
+    const newUserId = created.user?.id;
+
+    // 2) 建员工档案（普通员工），并关联登录账号
+    const { error: ie } = await admin.from("employees").insert({
+      name, email, role, dept,
+      user_id: newUserId,
+      is_admin: false, is_manager: false, absent: false,
+    });
+    if (ie) {
+      // 档案建失败，回滚刚建的登录账号，避免留下孤立账号
+      if (newUserId) await admin.auth.admin.deleteUser(newUserId);
+      return NextResponse.json({ error: ie.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   return NextResponse.json({ error: "未知操作" }, { status: 400 });
 }
