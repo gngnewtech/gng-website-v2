@@ -20,7 +20,7 @@ export default async function AdminPage() {
   // 读员工和任务（经理看不到的私密任务由数据库 RLS 自动过滤）
   const { data: employees } = await supabase
     .from("employees")
-    .select("id, name, role, dept, email, absent")
+    .select("id, name, role, dept, email, absent, is_admin, is_manager, user_id")
     .order("created_at", { ascending: true });
 
   const { data: tasks } = await supabase

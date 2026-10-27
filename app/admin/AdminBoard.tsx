@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 type TaskState = "todo" | "doing" | "done";
 type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null };
-type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean };
+type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean; is_admin?: boolean; is_manager?: boolean; user_id?: string | null };
 
 function stats(tasks: Task[]) {
   const total = tasks.length;
@@ -81,6 +81,16 @@ async function api(body: any) {
   });
   return res.ok;
 }
+// 员工账号管理接口，返回 {ok, error?, created?}
+async function empApi(body: any): Promise<{ ok: boolean; error?: string; created?: boolean }> {
+  const res = await fetch("/api/employees", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, error: data?.error, created: data?.created };
+}
 
 export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; adminEmail: string; isAdmin: boolean }) {
   const router = useRouter();
@@ -93,6 +103,7 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
+  const [credsFor, setCredsFor] = useState<Employee | null>(null);
 
   const tasksOf = (empId: string) => tasks.filter((t) => t.assignee_id === empId);
   const selected = employees.find((e) => e.id === selectedId) ?? null;
@@ -141,6 +152,16 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
     await api({ action: "setStart", task_id: taskId, start_at: startIso });
     router.refresh();
   };
+  const doSetCredentials = async (employeeId: string, email: string, password: string) => {
+    const r = await empApi({ action: "setCredentials", employee_id: employeeId, email, password });
+    if (r.ok) {
+      setCredsFor(null);
+      showToast(r.created ? "已开通登录账号" : "账号已更新");
+      router.refresh();
+    } else {
+      showToast(r.error || "操作失败");
+    }
+  };
   const doDelete = async (task: Task) => {
     setConfirmDelete(null);
     await api({ action: "delete", task_id: task.id });
@@ -171,7 +192,7 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
       <main style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
         {selected ? (
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
-            onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)}
+            onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)}
             onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar} />
         ) : (
           <>
@@ -260,11 +281,12 @@ export default function AdminBoard({ employees, tasks, adminEmail, isAdmin }: { 
       {toast && (
         <div style={{ position: "fixed", left: "50%", bottom: 32, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "10px 18px", borderRadius: 999, fontSize: 14, zIndex: 100, boxShadow: "0 6px 20px rgba(15,23,42,.25)" }}>{toast}</div>
       )}
+      {credsFor && <CredentialsModal emp={credsFor} busy={busy} onClose={() => setCredsFor(null)} onSave={doSetCredentials} />}
     </div>
   );
 }
 
-function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetStart, onDelete, onAssignHere, onTransfer, bar }: any) {
+function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetStart, onDelete, onAssignHere, onTransfer, bar, isAdmin, onManageAccount }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort((a, b) => {
     // 已完成的排到最后，其余按重要紧急排序
@@ -298,6 +320,11 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <h3 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{emp.name}</h3>
             <span style={{ ...pill, color: m.color, background: m.bg, borderColor: m.bg }}>{m.label}</span>
+            {isAdmin && !emp.is_admin && !emp.is_manager && (
+              <button onClick={() => onManageAccount(emp)} style={{ fontSize: 13, padding: "4px 12px", borderRadius: 999, border: "1px solid #cbd5e1", background: "#fff", color: "#475569", cursor: "pointer" }}>
+                {emp.user_id ? "账号设置" : "开通登录"}
+              </button>
+            )}
           </div>
           <p style={{ fontSize: 14, color: "#64748b", marginTop: 6 }}>{emp.dept} · {emp.role} · {emp.email}</p>
           <div style={{ marginTop: 16 }}>{bar(s.pct, m.bar)}</div>
@@ -401,6 +428,37 @@ function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
           <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim(), important, urgent, isPrivate, startAt)} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CredentialsModal({ emp, busy, onClose, onSave }: any) {
+  const hasLogin = !!emp.user_id;
+  const [email, setEmail] = useState(emp.email ?? "");
+  const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const canSave = email.trim() && (hasLogin || password.length >= 6) && (!password || password.length >= 6);
+  const submit = async () => { setSaving(true); await onSave(emp.id, email.trim(), password); setSaving(false); };
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={modal} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{hasLogin ? "账号设置" : "开通登录"}</h3>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 20px" }}>
+          {emp.name} · {hasLogin ? "可修改登录邮箱或重设密码" : "为该员工开通登录账号"}
+        </p>
+        <label style={lbl}>登录邮箱</label>
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" style={field} />
+        <div style={{ height: 16 }} />
+        <label style={lbl}>{hasLogin ? "新密码（留空=不修改）" : "初始密码（至少 6 位）"}</label>
+        <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={hasLogin ? "留空则只改邮箱" : "至少 6 位"} style={field} />
+        <p style={{ fontSize: 12, color: "#94a3b8", margin: "8px 0 0" }}>
+          {hasLogin ? "填写新密码即为该员工重设密码；修改后请把新密码/邮箱告知本人。" : "开通后请把邮箱和初始密码告知该员工，首次登录后可自行使用。"}
+        </p>
+        <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={btnGhost}>取消</button>
+          <button disabled={busy || saving || !canSave} onClick={submit} style={{ ...btnPrimary, opacity: busy || saving || !canSave ? 0.5 : 1 }}>{saving ? "提交中…" : "保存"}</button>
         </div>
       </div>
     </div>
