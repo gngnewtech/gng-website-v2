@@ -141,7 +141,6 @@ export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, is
   const doCycle = async (task: Task) => {
     // 已完成再点 → 复制一条新的「待开始」任务给同一员工，原任务保持已完成
     if (task.state === "done") {
-      showToast("已复制一条新任务到「待开始」");
       await api({ action: "assign", assignee_id: task.assignee_id, name: task.name, important: task.important, urgent: task.urgent, is_private: isAdmin && !!task.is_private });
       router.refresh();
       return;
@@ -150,7 +149,6 @@ export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, is
     const next = order[(order.indexOf(task.state) + 1) % 3];
     // 先本地立即切换，点一下马上变；再同步后端
     setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, state: next, done_at: next === "done" ? new Date().toISOString() : null } : x)));
-    showToast(`已切换为「${TASK_LABEL[next]}」`);
     const ok = await api({ action: "setState", task_id: task.id, state: next });
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
     router.refresh();
@@ -318,6 +316,14 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
     return ad !== bd ? ad - bd : byTimeUrgent(a, b);
   });
   const [editingNote, setEditingNote] = useState<string | null>(null);
+  const [flash, setFlash] = useState<{ id: string; msg: string } | null>(null);
+  const cycleOrder: TaskState[] = ["todo", "doing", "done"];
+  const clickStatus = (t: Task) => {
+    const msg = t.state === "done" ? "已复制" : "→ " + TASK_LABEL[cycleOrder[(cycleOrder.indexOf(t.state) + 1) % 3]];
+    setFlash({ id: t.id, msg });
+    setTimeout(() => setFlash((f) => (f && f.id === t.id ? null : f)), 1500);
+    onCycle(t);
+  };
   const [noteDraft, setNoteDraft] = useState("");
   const openNote = (t: Task) => { setEditingNote(t.id); setNoteDraft(t.note ?? ""); };
   const saveNote = (t: Task) => { setEditingNote(null); onSetNote(t.id, noteDraft.trim()); };
@@ -379,7 +385,8 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
                   <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>备注</button>
                   <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13, flex: "none" }}>转交</button>
                   <button onClick={() => onDelete(t)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" }}>删除</button>
-                  <button onClick={() => onCycle(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
+                  <button onClick={() => clickStatus(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
+                  {flash && flash.id === t.id && <span style={{ fontSize: 12, fontWeight: 600, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap", flex: "none" }}>✓ {flash.msg}</span>}
                 </div>
                 {t.note && !editing && (
                   <div style={{ padding: "0 16px 12px 88px", fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {t.note}</div>

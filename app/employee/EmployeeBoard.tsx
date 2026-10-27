@@ -171,14 +171,14 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const [newStart, setNewStart] = useState("");
   const [editingStart, setEditingStart] = useState<string | null>(null);
   const [startDraft, setStartDraft] = useState("");
-  const [toast, setToast] = useState<string | null>(null);
+  const [flash, setFlash] = useState<{ id: string; msg: string } | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const [seen, setSeen] = useState<Set<string>>(new Set());
   useEffect(() => {
     try { const raw = localStorage.getItem("gng_notif_seen"); if (raw) setSeen(new Set(JSON.parse(raw))); } catch {}
   }, []);
   const saveSeen = (next: Set<string>) => { setSeen(next); try { localStorage.setItem("gng_notif_seen", JSON.stringify([...next])); } catch {} };
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
+  const showFlash = (id: string, msg: string) => { setFlash({ id, msg }); setTimeout(() => setFlash((f) => (f && f.id === id ? null : f)), 1500); };
   const [lang, setLang] = useState<"zh" | "en">("zh");
   useEffect(() => {
     let saved: string | null = null;
@@ -271,19 +271,19 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     if (task.state === "done") {
       const temp: Task = { id: "temp-" + Date.now(), name: task.name, state: "todo", done_at: null, important: task.important, urgent: task.urgent, note: null, assignee_id: me.id, parent_id: task.parent_id, created_by: me.id, acknowledged: true, start_at: null };
       setTasks((prev) => [...prev, temp]);
+      showFlash(task.id, t.copiedNew);
       const ok = await api({ action: "assign", name: task.name, important: task.important, urgent: task.urgent, parent_id: task.parent_id });
       if (ok) router.refresh();
       else setTasks((prev) => prev.filter((x) => x.id !== temp.id));
-      showToast(t.copiedNew);
       return;
     }
     const order: TaskState[] = ["todo", "doing", "done"];
     const next = order[(order.indexOf(task.state) + 1) % 3];
     const nowIso = new Date().toISOString();
     setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, state: next, done_at: next === "done" ? nowIso : null } : x)));
+    showFlash(task.id, "→ " + t[next]);
     const ok = await api({ action: "setState", task_id: task.id, state: next });
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
-    else showToast(`${t.switchedTo}「${t[next]}」`);
   };
 
   const setPriority = async (task: Task, imp: boolean, urg: boolean) => {
@@ -415,7 +415,10 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
             )}
           </div>
           {mine
-            ? <button onClick={() => cycle(x)} style={stateBtnStyle(x.state)}>{t[x.state]}</button>
+            ? <>
+                <button onClick={() => cycle(x)} style={stateBtnStyle(x.state)}>{t[x.state]}</button>
+                {flash && flash.id === x.id && <span style={{ fontSize: 12, fontWeight: 600, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap", flex: "none", marginLeft: 8 }}>✓ {flash.msg}</span>}
+              </>
             : <span style={stateBadgeStyle(x.state)}>{t[x.state]}</span>}
         </div>
 
@@ -603,9 +606,6 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
             </div>
           </div>
         </div>
-      )}
-      {toast && (
-        <div style={{ position: "fixed", left: "50%", top: 72, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "12px 22px", borderRadius: 999, fontSize: 15, fontWeight: 600, zIndex: 100, boxShadow: "0 10px 30px rgba(15,23,42,.35)", display: "flex", alignItems: "center", gap: 8 }}>✓ {toast}</div>
       )}
     </div>
   );
