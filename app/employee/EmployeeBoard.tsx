@@ -570,6 +570,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
                 </>
               )}
             </div>
+            <a href="/admin/do" style={{ color: "#cbd5e1", textDecoration: "none", whiteSpace: "nowrap" }}>DO</a>
             <span style={{ color: "#cbd5e1" }}>{me.name}</span>
             <button onClick={logout} style={{ background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", fontSize: 14 }}>{t.logout}</button>
           </div>
