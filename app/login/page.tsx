@@ -32,6 +32,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<"" | "creds" | "notEmp">("");
   const [lang, setLang] = useState<"zh" | "en">("zh");
+  const [checking, setChecking] = useState(true);
   const supabase = createClient();
   const router = useRouter();
   const t = T[lang];
@@ -43,6 +44,21 @@ export default function LoginPage() {
     if (saved === "zh" || saved === "en") { setLang(saved); return; }
     const l = (navigator.language || "zh").toLowerCase();
     setLang(l.startsWith("zh") ? "zh" : "en");
+  }, []);
+
+  // 已登录的用户打开（如从桌面 App 图标进入）直接跳到对应界面，不再显示登录框
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setChecking(false); return; }
+      const { data: emp } = await supabase
+        .from("employees")
+        .select("is_admin, is_manager")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (emp) { router.replace(emp.is_admin || emp.is_manager ? "/admin" : "/employee"); return; }
+      setChecking(false);
+    })();
   }, []);
 
   const chooseLang = (l: "zh" | "en") => {
@@ -83,6 +99,8 @@ export default function LoginPage() {
     router.push(emp.is_admin || emp.is_manager ? "/admin" : "/employee");
     router.refresh();
   };
+
+  if (checking) return <div style={{ minHeight: "100vh", background: "#0f172a" }} />;
 
   return (
     <div style={S.page}>
