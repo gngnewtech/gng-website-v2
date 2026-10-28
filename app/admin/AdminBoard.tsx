@@ -196,19 +196,29 @@ export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, is
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: 'system-ui,-apple-system,"PingFang SC",sans-serif', color: "#1e293b" }}>
+      <style>{`
+        @media (max-width: 600px) {
+          .ab-head { padding: 0 12px !important; }
+          .ab-brand { font-size: 11px !important; letter-spacing: .06em !important; }
+          .ab-head-right { gap: 10px !important; font-size: 13px !important; }
+          .ab-email { display: none !important; }
+          .ab-main { padding: 16px 12px !important; }
+          .ab-tname { min-width: 100% !important; flex-basis: 100% !important; }
+        }
+      `}</style>
       <header style={{ background: "#0f172a", color: "#f1f5f9", position: "sticky", top: 0, zIndex: 10 }}>
-        <div style={{ maxWidth: 960, margin: "0 auto", padding: "0 24px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ color: "#fbbf24", fontFamily: "ui-monospace,monospace", letterSpacing: ".16em", fontSize: 13 }}>● ADMIN.GNGNT.COM</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 14 }}>
-            <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 999, border: "1px solid #334155", color: "#fbbf24" }}>{isAdmin ? "管理员" : "经理"}</span>
-            {!isAdmin && <a href="/employee" style={{ color: "#cbd5e1", textDecoration: "none" }}>我的任务</a>}
-            <span style={{ color: "#cbd5e1" }}>{adminEmail}</span>
-            <button onClick={logout} style={{ background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", fontSize: 14 }}>退出</button>
+        <div className="ab-head" style={{ maxWidth: 960, margin: "0 auto", padding: "0 24px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span className="ab-brand" style={{ color: "#fbbf24", fontFamily: "ui-monospace,monospace", letterSpacing: ".16em", fontSize: 13, whiteSpace: "nowrap" }}>● ADMIN.GNGNT.COM</span>
+          <div className="ab-head-right" style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 14 }}>
+            <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 999, border: "1px solid #334155", color: "#fbbf24", whiteSpace: "nowrap", flex: "none" }}>{isAdmin ? "管理员" : "经理"}</span>
+            {!isAdmin && <a href="/employee" style={{ color: "#cbd5e1", textDecoration: "none", whiteSpace: "nowrap", flex: "none" }}>我的任务</a>}
+            <span className="ab-email" style={{ color: "#cbd5e1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{adminEmail}</span>
+            <button onClick={logout} style={{ background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", fontSize: 14, whiteSpace: "nowrap", flex: "none" }}>退出</button>
           </div>
         </div>
       </header>
 
-      <main style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
+      <main className="ab-main" style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
         {selected ? (
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
             onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)}
@@ -382,13 +392,13 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
             const editing = editingNote === t.id;
             return (
               <div key={t.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
+                <div className="ab-trow" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
                   <StartBadge t={t} />
                   <button onClick={() => (editingStart === t.id ? setEditingStart(null) : openStart(t))} style={{ fontSize: 13, padding: "3px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${t.start_at ? "#0369a1" : "#cbd5e1"}`, background: t.start_at ? "#0369a1" : "#fff", color: t.start_at ? "#fff" : "#475569", flex: "none" }}>时间</button>
                   <button onClick={() => onSetPriority(t, !t.important, t.urgent)} style={chipStyle(t.important, "#1d4ed8")}>重要</button>
                   <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
                   <PrivateBadge t={t} />
-                  <span style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
+                  <span className="ab-tname" style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
                   <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>备注</button>
                   <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13, flex: "none" }}>转交</button>
                   <button onClick={() => onDelete(t)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" }}>删除</button>
