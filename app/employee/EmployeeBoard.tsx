@@ -37,7 +37,7 @@ const T = {
     doneTitle: "确认完成", doneMsg: "确定把这条任务标记为「已完成」吗？", doneConfirm: "确认完成",
     transfer: "转交", transferTitle: "转交任务", transferTo: "转交给：", transferConfirm: "确认转交", transferring: "提交中…",
     transferDone: "已转交给", transferFail: "转交失败：", noTargets: "没有可转交的人", managerTag: "经理", adminTag: "管理员",
-    noteAdd: "添加跟进", noteAdding: "保存中…", noteDelConfirm: "删除这条跟进？", noteLegacy: "（原备注）", noteFail: "保存失败：",
+    doFlow: "DO 流程", noteAdd: "添加跟进", noteAdding: "保存中…", noteDelConfirm: "删除这条跟进？", noteLegacy: "（原备注）", noteFail: "保存失败：",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks",
@@ -61,7 +61,7 @@ const T = {
     doneTitle: "Mark as done", doneMsg: "Mark this task as completed?", doneConfirm: "Confirm",
     transfer: "Transfer", transferTitle: "Transfer task", transferTo: "Transfer to:", transferConfirm: "Transfer", transferring: "Sending…",
     transferDone: "Transferred to", transferFail: "Transfer failed: ", noTargets: "No one to transfer to", managerTag: "Manager", adminTag: "Admin",
-    noteAdd: "Add follow-up", noteAdding: "Saving…", noteDelConfirm: "Delete this follow-up?", noteLegacy: "(earlier note)", noteFail: "Save failed: ",
+    doFlow: "DO Flow", noteAdd: "Add follow-up", noteAdding: "Saving…", noteDelConfirm: "Delete this follow-up?", noteLegacy: "(earlier note)", noteFail: "Save failed: ",
   },
 };
 
@@ -583,7 +583,6 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
                 </>
               )}
             </div>
-            <a href="/admin/do" style={{ color: "#cbd5e1", textDecoration: "none", whiteSpace: "nowrap" }}>DO</a>
             <span style={{ color: "#cbd5e1" }}>{me.name}</span>
             <button onClick={logout} style={{ background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", fontSize: 14 }}>{t.logout}</button>
           </div>
@@ -603,7 +602,10 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
           </div>
         </div>
 
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: "#475569", margin: "0 0 6px" }}>{t.myTasks}</h3>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 6px" }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: "#475569", margin: 0 }}>{t.myTasks}</h3>
+          <a href="/admin/do" style={{ fontSize: 12, padding: "3px 12px", borderRadius: 999, border: "1px solid #cbd5e1", background: "#fff", color: "#334155", textDecoration: "none", whiteSpace: "nowrap" }}>{t.doFlow}</a>
+        </div>
         <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 14px" }}>{t.hint}</p>
 
         <div className="emp-add">
