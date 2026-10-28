@@ -1,6 +1,6 @@
 // 放置位置：app/api/employees/route.ts
 // 员工账号管理：设置/修改登录邮箱与密码、重设密码。
-// 仅管理员可用；只能管理普通员工（不能动管理员、经理的账号）。
+// 仅管理员可用；可管理普通员工和经理的账号（不能动管理员账号）。
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     if (!email) return NextResponse.json({ error: "请填写登录邮箱" }, { status: 400 });
     if (password && password.length < 6) return NextResponse.json({ error: "密码至少 6 位" }, { status: 400 });
 
-    // 读取目标员工，校验只能管普通员工
+    // 读取目标员工，校验不能动管理员账号
     const { data: target, error: te } = await supabase
       .from("employees")
       .select("id, email, user_id, is_admin, is_manager")
@@ -43,8 +43,8 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (te) return NextResponse.json({ error: te.message }, { status: 500 });
     if (!target) return NextResponse.json({ error: "员工不存在" }, { status: 404 });
-    if (target.is_admin || target.is_manager)
-      return NextResponse.json({ error: "只能管理普通员工的账号" }, { status: 403 });
+    if (target.is_admin)
+      return NextResponse.json({ error: "不能修改管理员的账号" }, { status: 403 });
 
     let admin;
     try { admin = createAdminClient(); }

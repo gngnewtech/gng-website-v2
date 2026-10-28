@@ -441,7 +441,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <h3 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{emp.name}</h3>
             <span style={{ ...pill, color: m.color, background: m.bg, borderColor: m.bg }}>{m.label}</span>
-            {isAdmin && !emp.is_admin && !emp.is_manager && (
+            {isAdmin && !emp.is_admin && (
               <button onClick={() => onManageAccount(emp)} style={{ fontSize: 13, padding: "4px 12px", borderRadius: 999, border: "1px solid #cbd5e1", background: "#fff", color: "#475569", cursor: "pointer" }}>
                 {emp.user_id ? "账号设置" : "开通登录"}
               </button>
