@@ -86,6 +86,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  if (action === "setName") {
+    const { task_id, name } = body;
+    const clean = (name ?? "").toString().trim();
+    if (!clean) return NextResponse.json({ error: "缺少任务内容" }, { status: 400 });
+    // 修改任务内容；普通员工只能改自己的任务
+    let uq = supabase.from("tasks").update({ name: clean }).eq("id", task_id);
+    if (!me.is_admin && !me.is_manager) uq = uq.eq("assignee_id", me.id);
+    const { error: e } = await uq;
+    if (e) return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "setStart") {
     const { task_id, start_at } = body;
     // 修改任务开始时间（清空传 null）；管理员/经理可改看得到的任务，普通员工只能改自己的

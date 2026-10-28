@@ -117,6 +117,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, is
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
   const [credsFor, setCredsFor] = useState<Employee | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editTask, setEditTask] = useState<Task | null>(null);
 
   const tasksOf = (empId: string) => tasks.filter((t) => t.assignee_id === empId);
   const selected = employees.find((e) => e.id === selectedId) ?? null;
@@ -186,6 +187,17 @@ export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, is
     await api({ action: "delete", task_id: task.id });
     router.refresh();
   };
+  const doEditTask = async (original: Task, name: string, assigneeId: string, important: boolean, urgent: boolean) => {
+    setEditTask(null);
+    const nm = name.trim();
+    setTasks((prev) => prev.map((x) => (x.id === original.id ? { ...x, name: nm || x.name, assignee_id: assigneeId, important, urgent } : x)));
+    const calls: Promise<boolean>[] = [];
+    if (nm && nm !== original.name) calls.push(api({ action: "setName", task_id: original.id, name: nm }));
+    if (assigneeId && assigneeId !== original.assignee_id) calls.push(api({ action: "transfer", task_id: original.id, to_assignee_id: assigneeId }));
+    if (important !== original.important || urgent !== original.urgent) calls.push(api({ action: "setPriority", task_id: original.id, important, urgent }));
+    await Promise.all(calls);
+    router.refresh();
+  };
   const logout = async () => { await fetch("/api/logout", { method: "POST" }); router.push("/login"); router.refresh(); };
 
   const bar = (pct: number, color: string) => (
@@ -221,7 +233,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, is
       <main className="ab-main" style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
         {selected ? (
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
-            onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)}
+            onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} onEdit={(t: Task) => setEditTask(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)}
             onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar} />
         ) : (
           <>
@@ -315,11 +327,12 @@ export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, is
       )}
       {credsFor && <CredentialsModal emp={credsFor} busy={busy} onClose={() => setCredsFor(null)} onSave={doSetCredentials} />}
       {addOpen && <AddEmployeeModal onClose={() => setAddOpen(false)} onSave={doAddEmployee} />}
+      {editTask && <EditTaskModal task={editTask} employees={employees} onClose={() => setEditTask(null)} onSave={doEditTask} />}
     </div>
   );
 }
 
-function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetStart, onDelete, onAssignHere, onTransfer, bar, isAdmin, onManageAccount }: any) {
+function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort((a, b) => {
     // 已完成的排到最后；其余：紧急优先 → 有时间的按时间 → 无时间的在后
@@ -399,7 +412,8 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
                   <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
                   <PrivateBadge t={t} />
                   <span className="ab-tname" style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
-                  <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>备注</button>
+                  <button onClick={() => onEdit(t)} style={{ background: "none", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontSize: 13, flex: "none" }}>编辑</button>
+                  <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>跟进</button>
                   <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13, flex: "none" }}>转交</button>
                   <button onClick={() => onDelete(t)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" }}>删除</button>
                   <button onClick={() => clickStatus(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
@@ -410,7 +424,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
                 )}
                 {editing && (
                   <div style={{ padding: "0 16px 14px 88px" }}>
-                    <textarea value={noteDraft} autoFocus onChange={(e) => setNoteDraft(e.target.value)} rows={2} placeholder="写点备注或需要修改的地方…"
+                    <textarea value={noteDraft} autoFocus onChange={(e) => setNoteDraft(e.target.value)} rows={2} placeholder="写进一步的进展或消息…"
                       style={{ width: "100%", padding: 10, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
                     <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                       <button onClick={() => saveNote(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
@@ -490,6 +504,40 @@ function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
           <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim(), important, urgent, isPrivate, startAt)} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditTaskModal({ task, employees, onClose, onSave }: any) {
+  const [name, setName] = useState(task.name ?? "");
+  const [assigneeId, setAssigneeId] = useState(task.assignee_id);
+  const [important, setImportant] = useState(!!task.important);
+  const [urgent, setUrgent] = useState(!!task.urgent);
+  const [saving, setSaving] = useState(false);
+  const submit = async () => { setSaving(true); await onSave(task, name, assigneeId, important, urgent); setSaving(false); };
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={modal} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>编辑任务</h3>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 20px" }}>可修改任务内容、负责人和优先级。</p>
+        <label style={lbl}>任务内容</label>
+        <textarea value={name} autoFocus onChange={(e) => setName(e.target.value)} rows={2} style={{ ...field, fontFamily: "inherit", resize: "vertical" }} />
+        <div style={{ height: 16 }} />
+        <label style={lbl}>负责人</label>
+        <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} style={field}>
+          {employees.map((e: Employee) => <option key={e.id} value={e.id}>{e.name}{e.role ? " · " + e.role : ""}</option>)}
+        </select>
+        <div style={{ height: 16 }} />
+        <label style={lbl}>优先级（四象限）</label>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button type="button" onClick={() => setImportant((v) => !v)} style={toggleStyle(important, "#1d4ed8")}>{important ? "✓ " : ""}重要</button>
+          <button type="button" onClick={() => setUrgent((v) => !v)} style={toggleStyle(urgent, "#be123c")}>{urgent ? "✓ " : ""}紧急</button>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={btnGhost}>取消</button>
+          <button disabled={saving || !name.trim()} onClick={submit} style={{ ...btnPrimary, opacity: saving || !name.trim() ? 0.5 : 1 }}>{saving ? "保存中…" : "保存"}</button>
         </div>
       </div>
     </div>
