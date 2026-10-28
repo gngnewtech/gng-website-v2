@@ -371,6 +371,52 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
     const iso = override !== undefined ? override : (startDraft ? new Date(startDraft).toISOString() : null);
     setEditingStart(null); onSetStart(t.id, iso);
   };
+  const activeTasks = sorted.filter((t: Task) => t.state !== "done");
+  const doneTasks = sorted.filter((t: Task) => t.state === "done");
+  const [doneOpen, setDoneOpen] = useState(false);
+  const renderRow = (t: Task) => {
+    const editing = editingNote === t.id;
+    return (
+      <div key={t.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+        <div className="ab-trow" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
+          <StartBadge t={t} />
+          <button onClick={() => (editingStart === t.id ? setEditingStart(null) : openStart(t))} style={{ fontSize: 13, padding: "3px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${t.start_at ? "#0369a1" : "#cbd5e1"}`, background: t.start_at ? "#0369a1" : "#fff", color: t.start_at ? "#fff" : "#475569", flex: "none" }}>时间</button>
+          <button onClick={() => onSetPriority(t, !t.important, t.urgent)} style={chipStyle(t.important, "#1d4ed8")}>重要</button>
+          <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
+          <PrivateBadge t={t} />
+          <span className="ab-tname" style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
+          <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={t.note ? { ...actBtn("#fff", "#0f172a"), background: "#0f172a" } : actBtn()}>{t.note ? "跟进 ●" : "跟进"}</button>
+          <button onClick={() => onEdit(t)} style={actBtn()}>编辑</button>
+          <button onClick={() => onTransfer(t)} style={actBtn("#2563eb", "#bfdbfe")}>转交</button>
+          <button onClick={() => onDelete(t)} style={actBtn("#dc2626", "#fecaca")}>删除</button>
+          <button onClick={() => clickStatus(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
+          {flash && flash.id === t.id && <span style={{ fontSize: 12, fontWeight: 600, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap", flex: "none" }}>✓ {flash.msg}</span>}
+        </div>
+        {t.note && !editing && (
+          <div style={{ padding: "0 16px 12px 88px", fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {t.note}</div>
+        )}
+        {editing && (
+          <div style={{ padding: "0 16px 14px 88px" }}>
+            <textarea value={noteDraft} autoFocus onChange={(e) => setNoteDraft(e.target.value)} rows={2} placeholder="写进一步的进展或消息…"
+              style={{ width: "100%", padding: 10, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button onClick={() => saveNote(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
+              <button onClick={() => setEditingNote(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>取消</button>
+            </div>
+          </div>
+        )}
+        {editingStart === t.id && (
+          <div style={{ padding: "0 16px 14px 88px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "#64748b" }}>开始时间</span>
+            <input type="datetime-local" value={startDraft} onChange={(e) => setStartDraft(e.target.value)} style={{ padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none" }} />
+            <button onClick={() => saveStart(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
+            <button onClick={() => saveStart(t, null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>清除</button>
+            <button onClick={() => setEditingStart(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>取消</button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -400,52 +446,30 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
         <button onClick={onAssignHere} style={btnPrimary}>+ 给 {emp.name} 派任务</button>
       </div>
       <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>按重要紧急程度排序 · 点状态字切换进度（已完成再点复制新任务）· 点「重要」「紧急」调优先级 · 点「备注」写说明</p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {sorted.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 32, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>还没有任务</div> :
-          sorted.map((t: Task) => {
-            const editing = editingNote === t.id;
-            return (
-              <div key={t.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
-                <div className="ab-trow" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
-                  <StartBadge t={t} />
-                  <button onClick={() => (editingStart === t.id ? setEditingStart(null) : openStart(t))} style={{ fontSize: 13, padding: "3px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${t.start_at ? "#0369a1" : "#cbd5e1"}`, background: t.start_at ? "#0369a1" : "#fff", color: t.start_at ? "#fff" : "#475569", flex: "none" }}>时间</button>
-                  <button onClick={() => onSetPriority(t, !t.important, t.urgent)} style={chipStyle(t.important, "#1d4ed8")}>重要</button>
-                  <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
-                  <PrivateBadge t={t} />
-                  <span className="ab-tname" style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
-                  <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={t.note ? { ...actBtn("#fff", "#0f172a"), background: "#0f172a" } : actBtn()}>{t.note ? "跟进 ●" : "跟进"}</button>
-                  <button onClick={() => onEdit(t)} style={actBtn()}>编辑</button>
-                  <button onClick={() => onTransfer(t)} style={actBtn("#2563eb", "#bfdbfe")}>转交</button>
-                  <button onClick={() => onDelete(t)} style={actBtn("#dc2626", "#fecaca")}>删除</button>
-                  <button onClick={() => clickStatus(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
-                  {flash && flash.id === t.id && <span style={{ fontSize: 12, fontWeight: 600, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap", flex: "none" }}>✓ {flash.msg}</span>}
+      {sorted.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 32, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>还没有任务</div> : (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {activeTasks.length === 0
+              ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 24, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>没有未完成的任务</div>
+              : activeTasks.map(renderRow)}
+          </div>
+          {doneTasks.length > 0 && (
+            <div style={{ marginTop: 20, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+              <button onClick={() => setDoneOpen((v) => !v)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+                <span style={{ fontSize: 12, color: "#64748b", width: 12, display: "inline-block", transform: doneOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▶</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "#047857" }}>已完成</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "1px 8px" }}>{doneTasks.length}</span>
+                <span style={{ marginLeft: "auto", fontSize: 12, color: "#94a3b8" }}>{doneOpen ? "收起" : "展开"}</span>
+              </button>
+              {doneOpen && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 12px 12px" }}>
+                  {doneTasks.map(renderRow)}
                 </div>
-                {t.note && !editing && (
-                  <div style={{ padding: "0 16px 12px 88px", fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {t.note}</div>
-                )}
-                {editing && (
-                  <div style={{ padding: "0 16px 14px 88px" }}>
-                    <textarea value={noteDraft} autoFocus onChange={(e) => setNoteDraft(e.target.value)} rows={2} placeholder="写进一步的进展或消息…"
-                      style={{ width: "100%", padding: 10, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
-                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                      <button onClick={() => saveNote(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
-                      <button onClick={() => setEditingNote(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>取消</button>
-                    </div>
-                  </div>
-                )}
-                {editingStart === t.id && (
-                  <div style={{ padding: "0 16px 14px 88px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: "#64748b" }}>开始时间</span>
-                    <input type="datetime-local" value={startDraft} onChange={(e) => setStartDraft(e.target.value)} style={{ padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none" }} />
-                    <button onClick={() => saveStart(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
-                    <button onClick={() => saveStart(t, null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>清除</button>
-                    <button onClick={() => setEditingStart(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>取消</button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-      </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
 
       {confirmDone && (
         <div style={overlay} onClick={() => setConfirmDone(null)}>
