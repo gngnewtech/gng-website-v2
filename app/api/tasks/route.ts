@@ -87,6 +87,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  if (action === "addNote") {
+    // 新增一条跟进（作者、时间由数据库自动填；能看到任务的人才能写，由 RLS 校验）
+    const { task_id, body: text } = body;
+    const clean = (text ?? "").toString().trim();
+    if (!task_id || !clean) return NextResponse.json({ error: "缺少内容" }, { status: 400 });
+    const { data, error: e } = await (supabase as any)
+      .from("task_notes")
+      .insert({ task_id, body: clean })
+      .select("id, task_id, author_id, author_name, body, created_at")
+      .single();
+    if (e) return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ ok: true, note: data });
+  }
+
+  if (action === "deleteNote") {
+    // 删除一条跟进：本人或管理员（RLS 校验）
+    const { note_id } = body;
+    if (!note_id) return NextResponse.json({ error: "缺少参数" }, { status: 400 });
+    const { data, error: e } = await (supabase as any).from("task_notes").delete().eq("id", note_id).select("id");
+    if (e) return NextResponse.json({ error: e.message }, { status: 500 });
+    if (!data || data.length === 0) return NextResponse.json({ error: "无权限删除" }, { status: 403 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "setName") {
     const { task_id, name } = body;
     const clean = (name ?? "").toString().trim();

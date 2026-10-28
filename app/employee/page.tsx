@@ -25,5 +25,15 @@ export default async function EmployeePage() {
   // 可转交对象（员工 → 经理/管理员；经理 → 全部）
   const { data: transferTargets } = await (supabase as any).rpc("get_transfer_targets");
 
-  return <EmployeeBoard me={me} tasks={tasks ?? []} staff={staff ?? []} transferTargets={transferTargets ?? []} />;
+  // 跟进记录（多条）
+  const taskIds = (tasks ?? []).map((x: any) => x.id);
+  const { data: notes } = taskIds.length
+    ? await (supabase as any)
+        .from("task_notes")
+        .select("id, task_id, author_id, author_name, body, created_at")
+        .in("task_id", taskIds)
+        .order("created_at", { ascending: true })
+    : { data: [] };
+
+  return <EmployeeBoard me={me} tasks={tasks ?? []} staff={staff ?? []} transferTargets={transferTargets ?? []} notes={notes ?? []} />;
 }
