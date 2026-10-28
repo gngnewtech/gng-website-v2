@@ -11,6 +11,7 @@ type Task = {
 };
 type Staff = { id: string; name: string; role: string | null; dept: string | null };
 type Me = { id: string; name: string; role: string | null; dept: string | null; email: string };
+type Target = { id: string; name: string; role: string | null; is_manager: boolean | null; is_admin: boolean | null };
 
 const T = {
   zh: {
@@ -33,6 +34,8 @@ const T = {
     switchedTo: "已切换为", copiedNew: "已复制一条新任务",
     notif: "提醒", notifNew: "新任务", notifStarted: "已到开始时间", notifEmpty: "暂无提醒", markAllRead: "全部已读", notifFrom: "来自",
     doneTitle: "确认完成", doneMsg: "确定把这条任务标记为「已完成」吗？", doneConfirm: "确认完成",
+    transfer: "转交", transferTitle: "转交任务", transferTo: "转交给：", transferConfirm: "确认转交", transferring: "提交中…",
+    transferDone: "已转交给", transferFail: "转交失败：", noTargets: "没有可转交的人", managerTag: "经理", adminTag: "管理员",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks",
@@ -54,6 +57,8 @@ const T = {
     switchedTo: "Switched to", copiedNew: "Copied a new task",
     notif: "Reminders", notifNew: "New task", notifStarted: "Start time reached", notifEmpty: "No reminders", markAllRead: "Mark all read", notifFrom: "from",
     doneTitle: "Mark as done", doneMsg: "Mark this task as completed?", doneConfirm: "Confirm",
+    transfer: "Transfer", transferTitle: "Transfer task", transferTo: "Transfer to:", transferConfirm: "Transfer", transferring: "Sending…",
+    transferDone: "Transferred to", transferFail: "Transfer failed: ", noTargets: "No one to transfer to", managerTag: "Manager", adminTag: "Admin",
   },
 };
 
@@ -135,6 +140,7 @@ const toggleStyle = (on: boolean, c: string): React.CSSProperties => ({ padding:
 const chipStyle = (on: boolean, c: string): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${on ? c : "#e2e8f0"}`, background: on ? c : "#fff", color: on ? "#fff" : "#94a3b8", fontWeight: on ? 600 : 400, whiteSpace: "nowrap", flex: "none" });
 const noteBtnStyle = (has: boolean): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${has ? "#0f172a" : "#e2e8f0"}`, background: has ? "#0f172a" : "#fff", color: has ? "#fff" : "#94a3b8", whiteSpace: "nowrap", flex: "none" });
 const subBtnStyle: React.CSSProperties = { fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: "1px solid #cbd5e1", background: "#fff", color: "#475569", whiteSpace: "nowrap", flex: "none" };
+const transferBtnStyle: React.CSSProperties = { fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: "1px solid #bfdbfe", background: "#fff", color: "#2563eb", whiteSpace: "nowrap", flex: "none" };
 const delBtnStyle: React.CSSProperties = { background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" };
 const ackBtnStyle: React.CSSProperties = { background: "#059669", color: "#fff", border: "none", borderRadius: 999, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flex: "none" };
 const stateBtnStyle = (s: TaskState): React.CSSProperties => ({ background: TASK_TONE[s].bg, color: TASK_TONE[s].color, border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 13, minWidth: 68, fontWeight: 500, flex: "none" });
@@ -153,7 +159,7 @@ const empModal: React.CSSProperties = { width: "100%", maxWidth: 380, background
 const empGhostBtn: React.CSSProperties = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 8, padding: "9px 14px", fontSize: 14, cursor: "pointer" };
 const empDangerBtn: React.CSSProperties = { background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
 
-export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: Me; tasks: Task[]; staff: Staff[] }) {
+export default function EmployeeBoard({ me, tasks: initialTasks, staff, transferTargets = [] }: { me: Me; tasks: Task[]; staff: Staff[]; transferTargets?: Target[] }) {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [newTask, setNewTask] = useState("");
@@ -167,6 +173,10 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const [nameDraft, setNameDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
   const [confirmDone, setConfirmDone] = useState<Task | null>(null);
+  const [transferTask, setTransferTask] = useState<Task | null>(null);
+  const [transferTo, setTransferTo] = useState<string>("");
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [toast, setToast] = useState("");
   const [addingSubFor, setAddingSubFor] = useState<string | null>(null);
   const [subName, setSubName] = useState("");
   const [subAssignee, setSubAssignee] = useState<string>(me.id);
@@ -377,6 +387,25 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     }
   };
 
+  const openTransfer = (task: Task) => { setTransferTask(task); setTransferTo(transferTargets[0]?.id ?? ""); };
+  const doTransfer = async () => {
+    const task = transferTask;
+    if (!task || !transferTo) return;
+    const target = transferTargets.find((x) => x.id === transferTo);
+    setTransferBusy(true);
+    const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "transfer", task_id: task.id, to_assignee_id: transferTo }) });
+    setTransferBusy(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({} as any));
+      alert(t.transferFail + (data?.error || `HTTP ${res.status}`));
+      return;
+    }
+    setTransferTask(null);
+    setToast(`${t.transferDone} ${target?.name ?? ""}`);
+    setTimeout(() => setToast(""), 2000);
+    router.refresh();
+  };
+
   const openSub = (task: Task) => { setAddingSubFor(task.id); setSubName(""); setSubAssignee(me.id); setSubImportant(false); setSubUrgent(false); setSubStart(""); };
   const submitSub = async (parentId: string) => {
     const name = subName.trim();
@@ -425,6 +454,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
                 <button onClick={() => (editingName === x.id ? setEditingName(null) : openEditName(x))} style={subBtnStyle}>{t.edit}</button>
                 <button onClick={() => (editing ? setEditingNote(null) : openNote(x))} style={noteBtnStyle(!!x.note)}>{t.note}</button>
                 <button onClick={() => (addingSubFor === x.id ? setAddingSubFor(null) : openSub(x))} style={subBtnStyle}>{t.subAdd}</button>
+                {x.state !== "done" && transferTargets.length > 0 && <button onClick={() => openTransfer(x)} style={transferBtnStyle}>{t.transfer}</button>}
                 <button onClick={() => setConfirmDelete(x)} style={delBtnStyle}>{t.delete}</button>
               </>
             ) : (
@@ -636,6 +666,27 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
             </div>
           </div>
         </div>
+      )}
+      {transferTask && (
+        <div style={empOverlay} onClick={() => setTransferTask(null)}>
+          <div style={empModal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>{t.transferTitle}</h3>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: "10px 0 14px", wordBreak: "break-word" }}>{transferTask.name}</p>
+            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 6px" }}>{t.transferTo}</p>
+            <select value={transferTo} onChange={(e) => setTransferTo(e.target.value)} style={fieldStyle}>
+              {transferTargets.map((x) => (
+                <option key={x.id} value={x.id}>{x.name}{x.is_admin ? ` · ${t.adminTag}` : x.is_manager ? ` · ${t.managerTag}` : x.role ? ` · ${x.role}` : ""}</option>
+              ))}
+            </select>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+              <button onClick={() => setTransferTask(null)} style={empGhostBtn}>{t.cancel}</button>
+              <button disabled={transferBusy || !transferTo} onClick={doTransfer} style={{ ...empDangerBtn, background: "#2563eb", opacity: transferBusy ? 0.6 : 1 }}>{transferBusy ? t.transferring : t.transferConfirm}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {toast && (
+        <div style={{ position: "fixed", left: "50%", top: 72, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "12px 22px", borderRadius: 999, fontSize: 15, fontWeight: 600, zIndex: 100, boxShadow: "0 10px 30px rgba(15,23,42,.35)" }}>✓ {toast}</div>
       )}
       {confirmDone && (
         <div style={empOverlay} onClick={() => setConfirmDone(null)}>

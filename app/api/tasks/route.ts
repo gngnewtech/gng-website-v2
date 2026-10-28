@@ -40,13 +40,14 @@ export async function POST(req: Request) {
   }
 
   if (action === "transfer") {
-    // 管理员、经理可转交（经理看不到的任务由数据库 RLS 拦住）
-    if (!me.is_admin && !me.is_manager) return NextResponse.json({ error: "无权限" }, { status: 403 });
+    // 权限由数据库 transfer_task 校验：
+    // 管理员不限；经理可转看得到的任务；普通员工只能把自己的任务转给经理/管理员
     const { task_id, to_assignee_id } = body;
-    const { error: e } = await supabase
-      .from("tasks")
-      .update({ assignee_id: to_assignee_id })
-      .eq("id", task_id);
+    if (!task_id || !to_assignee_id) return NextResponse.json({ error: "缺少参数" }, { status: 400 });
+    const { error: e } = await (supabase as any).rpc("transfer_task", {
+      p_task: task_id,
+      p_to: to_assignee_id,
+    });
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }

@@ -22,6 +22,8 @@ export default async function EmployeePage() {
   const { data: tasks } = await (supabase as any).rpc("get_my_tasks", { p_uid: me.id });
   // 员工名单（建子任务时选负责人用）
   const { data: staff } = await (supabase as any).rpc("get_staff");
+  // 可转交对象（员工 → 经理/管理员；经理 → 全部）
+  const { data: transferTargets } = await (supabase as any).rpc("get_transfer_targets");
 
-  return <EmployeeBoard me={me} tasks={tasks ?? []} staff={staff ?? []} />;
+  return <EmployeeBoard me={me} tasks={tasks ?? []} staff={staff ?? []} transferTargets={transferTargets ?? []} />;
 }
