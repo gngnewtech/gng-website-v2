@@ -29,7 +29,7 @@ const T = {
     deleteFail: "删除失败：",
     subAdd: "+ 子任务", subPlaceholder: "子任务内容…", assignTo: "分配给", myself: "我自己", subConfirm: "添加子任务",
     ackReceive: "确认收到", pendingAck: "待确认", confirmed: "已确认", startTime: "开始时间",
-    setTime: "时间", clearTime: "清除", optional: "可选",
+    setTime: "时间", clearTime: "清除", optional: "可选", edit: "编辑", editPlaceholder: "任务内容…",
     switchedTo: "已切换为", copiedNew: "已复制一条新任务",
     notif: "提醒", notifNew: "新任务", notifStarted: "已到开始时间", notifEmpty: "暂无提醒", markAllRead: "全部已读", notifFrom: "来自",
     doneTitle: "确认完成", doneMsg: "确定把这条任务标记为「已完成」吗？", doneConfirm: "确认完成",
@@ -50,7 +50,7 @@ const T = {
     deleteFail: "Delete failed: ",
     subAdd: "+ Subtask", subPlaceholder: "Subtask…", assignTo: "Assign to", myself: "Myself", subConfirm: "Add subtask",
     ackReceive: "Got it", pendingAck: "Pending", confirmed: "Confirmed", startTime: "Start time",
-    setTime: "Time", clearTime: "Clear", optional: "optional",
+    setTime: "Time", clearTime: "Clear", optional: "optional", edit: "Edit", editPlaceholder: "Task…",
     switchedTo: "Switched to", copiedNew: "Copied a new task",
     notif: "Reminders", notifNew: "New task", notifStarted: "Start time reached", notifEmpty: "No reminders", markAllRead: "Mark all read", notifFrom: "from",
     doneTitle: "Mark as done", doneMsg: "Mark this task as completed?", doneConfirm: "Confirm",
@@ -163,6 +163,8 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
   const [showHistory, setShowHistory] = useState(false);
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
   const [confirmDone, setConfirmDone] = useState<Task | null>(null);
   const [addingSubFor, setAddingSubFor] = useState<string | null>(null);
@@ -314,6 +316,15 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
     const ok = await api({ action: "setNote", task_id: task.id, note });
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
   };
+  const openEditName = (task: Task) => { setEditingName(task.id); setNameDraft(task.name); };
+  const saveName = async (task: Task) => {
+    const nm = nameDraft.trim();
+    if (!nm) return;
+    setEditingName(null);
+    setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, name: nm } : x)));
+    const ok = await api({ action: "setName", task_id: task.id, name: nm });
+    if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
+  };
 
   const openStart = (task: Task) => { setEditingStart(task.id); setStartDraft(toLocalInput(task.start_at)); };
   const saveStart = async (task: Task, override?: string | null) => {
@@ -411,6 +422,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
           <div className="emp-actions">
             {mine ? (
               <>
+                <button onClick={() => (editingName === x.id ? setEditingName(null) : openEditName(x))} style={subBtnStyle}>{t.edit}</button>
                 <button onClick={() => (editing ? setEditingNote(null) : openNote(x))} style={noteBtnStyle(!!x.note)}>{t.note}</button>
                 <button onClick={() => (addingSubFor === x.id ? setAddingSubFor(null) : openSub(x))} style={subBtnStyle}>{t.subAdd}</button>
                 <button onClick={() => setConfirmDelete(x)} style={delBtnStyle}>{t.delete}</button>
@@ -443,6 +455,16 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff }: { me: 
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
               <button onClick={() => saveNote(x)} style={smallPrimary}>{t.save}</button>
               <button onClick={() => setEditingNote(null)} style={smallGhost}>{t.cancel}</button>
+            </div>
+          </div>
+        )}
+        {editingName === x.id && (
+          <div className="emp-note">
+            <textarea value={nameDraft} autoFocus onChange={(e) => setNameDraft(e.target.value)} rows={2} placeholder={t.editPlaceholder}
+              style={{ width: "100%", padding: 10, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button onClick={() => saveName(x)} disabled={!nameDraft.trim()} style={{ ...smallPrimary, opacity: nameDraft.trim() ? 1 : 0.5 }}>{t.save}</button>
+              <button onClick={() => setEditingName(null)} style={smallGhost}>{t.cancel}</button>
             </div>
           </div>
         )}
