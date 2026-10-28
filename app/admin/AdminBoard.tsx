@@ -243,7 +243,6 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
           <span className="ab-brand" style={{ color: "#fbbf24", fontFamily: "ui-monospace,monospace", letterSpacing: ".16em", fontSize: 13, whiteSpace: "nowrap" }}>● ADMIN.GNGNT.COM</span>
           <div className="ab-head-right" style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 14 }}>
             <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 999, border: "1px solid #334155", color: "#fbbf24", whiteSpace: "nowrap", flex: "none" }}>{isAdmin ? "管理员" : "经理"}</span>
-            <a href="/admin/do" style={{ color: "#cbd5e1", textDecoration: "none", whiteSpace: "nowrap", flex: "none" }}>DO 流程</a>
             {!isAdmin && <a href="/employee" style={{ color: "#cbd5e1", textDecoration: "none", whiteSpace: "nowrap", flex: "none" }}>我的任务</a>}
             <span className="ab-email" style={{ color: "#cbd5e1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{adminEmail}</span>
             <button onClick={logout} style={{ background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", fontSize: 14, whiteSpace: "nowrap", flex: "none" }}>退出</button>
@@ -265,6 +264,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 {isAdmin && <button onClick={() => setAddOpen(true)} style={btnGhost}>+ 添加员工</button>}
+                <a href="/admin/do" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>DO 流程</a>
                 <button onClick={() => { setAssignFor(undefined); setAssignOpen(true); }} style={btnPrimary}>+ 分配任务</button>
               </div>
             </div>
@@ -457,7 +457,10 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "24px 0 12px" }}>
         <h4 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: 0 }}>任务清单</h4>
-        <button onClick={onAssignHere} style={btnPrimary}>+ 给 {emp.name} 派任务</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <a href="/admin/do" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>DO 流程</a>
+          <button onClick={onAssignHere} style={btnPrimary}>+ 给 {emp.name} 派任务</button>
+        </div>
       </div>
       <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>按重要紧急程度排序 · 点状态字切换进度（已完成再点复制新任务）· 点「重要」「紧急」调优先级 · 点「备注」写说明</p>
       {sorted.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 32, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>还没有任务</div> : (
