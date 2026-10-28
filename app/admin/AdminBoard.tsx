@@ -81,6 +81,7 @@ function QuadBadge({ t }: { t: Task }) {
   return <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: q.color, background: q.bg, whiteSpace: "nowrap" }}>{q.label}</span>;
 }
 const chipStyle = (on: boolean, c: string): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${on ? c : "#e2e8f0"}`, background: on ? c : "#fff", color: on ? "#fff" : "#94a3b8", fontWeight: on ? 600 : 400, whiteSpace: "nowrap", flex: "none" });
+const actBtn = (color: string = "#475569", border: string = "#cbd5e1"): React.CSSProperties => ({ fontSize: 13, padding: "3px 12px", borderRadius: 6, cursor: "pointer", border: `1px solid ${border}`, background: "#fff", color, whiteSpace: "nowrap", flex: "none" });
 const noteBtnStyle = (has: boolean): React.CSSProperties => ({ fontSize: 12, padding: "3px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${has ? "#0f172a" : "#e2e8f0"}`, background: has ? "#0f172a" : "#fff", color: has ? "#fff" : "#94a3b8", whiteSpace: "nowrap", flex: "none" });
 
 async function api(body: any) {
@@ -412,10 +413,10 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
                   <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
                   <PrivateBadge t={t} />
                   <span className="ab-tname" style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
-                  <button onClick={() => onEdit(t)} style={{ background: "none", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontSize: 13, flex: "none" }}>编辑</button>
-                  <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={noteBtnStyle(!!t.note)}>跟进</button>
-                  <button onClick={() => onTransfer(t)} style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontSize: 13, flex: "none" }}>转交</button>
-                  <button onClick={() => onDelete(t)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 13, flex: "none" }}>删除</button>
+                  <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={t.note ? { ...actBtn("#fff", "#0f172a"), background: "#0f172a" } : actBtn()}>{t.note ? "跟进 ●" : "跟进"}</button>
+                  <button onClick={() => onEdit(t)} style={actBtn()}>编辑</button>
+                  <button onClick={() => onTransfer(t)} style={actBtn("#2563eb", "#bfdbfe")}>转交</button>
+                  <button onClick={() => onDelete(t)} style={actBtn("#dc2626", "#fecaca")}>删除</button>
                   <button onClick={() => clickStatus(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
                   {flash && flash.id === t.id && <span style={{ fontSize: 12, fontWeight: 600, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap", flex: "none" }}>✓ {flash.msg}</span>}
                 </div>
