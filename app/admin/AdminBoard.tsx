@@ -2,6 +2,9 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import NoteThread, { type TaskNote } from "../_shared/NoteThread";
+
+const NOTE_LABELS = { placeholder: "写进一步的进展或消息…", add: "添加跟进", adding: "保存中…", cancel: "取消", delete: "删除", confirmDelete: "删除这条跟进？", unknownAuthor: "（原备注）" };
 
 type TaskState = "todo" | "doing" | "done";
 type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null };
@@ -103,10 +106,17 @@ async function empApi(body: any): Promise<{ ok: boolean; error?: string; created
   return { ok: res.ok, error: data?.error, created: data?.created };
 }
 
-export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; adminEmail: string; isAdmin: boolean }) {
+export default function AdminBoard({ employees, tasks: tasksProp, notes: notesProp = [], meId = null, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; notes?: TaskNote[]; meId?: string | null; adminEmail: string; isAdmin: boolean }) {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>(tasksProp);
   useEffect(() => { setTasks(tasksProp); }, [tasksProp]);
+  const [notes, setNotes] = useState<TaskNote[]>(notesProp);
+  useEffect(() => { setNotes(notesProp); }, [notesProp]);
+  const notesByTask = useMemo(() => {
+    const m: Record<string, TaskNote[]> = {};
+    notes.forEach((n) => { (m[n.task_id] ||= []).push(n); });
+    return m;
+  }, [notes]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -160,9 +170,18 @@ export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, is
     await api({ action: "setPriority", task_id: task.id, important, urgent });
     router.refresh();
   };
-  const doSetNote = async (taskId: string, note: string) => {
-    await api({ action: "setNote", task_id: taskId, note });
-    router.refresh();
+  const doAddNote = async (taskId: string, body: string): Promise<boolean> => {
+    const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "addNote", task_id: taskId, body }) });
+    const data = await res.json().catch(() => ({} as any));
+    if (!res.ok || !data?.note) { showToast(data?.error || "保存失败"); return false; }
+    setNotes((prev) => [...prev, data.note]);
+    return true;
+  };
+  const doDeleteNote = async (note: TaskNote) => {
+    const backup = notes;
+    setNotes((prev) => prev.filter((n) => n.id !== note.id));
+    const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deleteNote", note_id: note.id }) });
+    if (!res.ok) { setNotes(backup); const d = await res.json().catch(() => ({} as any)); showToast(d?.error || "删除失败"); }
   };
   const doSetStart = async (taskId: string, startIso: string | null) => {
     await api({ action: "setStart", task_id: taskId, start_at: startIso });
@@ -234,7 +253,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, is
       <main className="ab-main" style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
         {selected ? (
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
-            onCycle={doCycle} onSetPriority={doSetPriority} onSetNote={doSetNote} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} onEdit={(t: Task) => setEditTask(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)}
+            onCycle={doCycle} onSetPriority={doSetPriority} notesByTask={notesByTask} onAddNote={doAddNote} onDeleteNote={doDeleteNote} meId={meId} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} onEdit={(t: Task) => setEditTask(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)}
             onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar} />
         ) : (
           <>
@@ -333,7 +352,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, adminEmail, is
   );
 }
 
-function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount }: any) {
+function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort((a, b) => {
     // 已完成的排到最后；其余：紧急优先 → 有时间的按时间 → 无时间的在后
@@ -355,9 +374,6 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
     if (t.state === "doing") { setConfirmDone(t); return; }
     runCycle(t);
   };
-  const [noteDraft, setNoteDraft] = useState("");
-  const openNote = (t: Task) => { setEditingNote(t.id); setNoteDraft(t.note ?? ""); };
-  const saveNote = (t: Task) => { setEditingNote(null); onSetNote(t.id, noteDraft.trim()); };
   const [editingStart, setEditingStart] = useState<string | null>(null);
   const [startDraft, setStartDraft] = useState("");
   const toLocalInput = (iso?: string | null) => {
@@ -376,6 +392,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
   const [doneOpen, setDoneOpen] = useState(false);
   const renderRow = (t: Task) => {
     const editing = editingNote === t.id;
+    const tNotes: TaskNote[] = notesByTask[t.id] ?? [];
     return (
       <div key={t.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
         <div className="ab-trow" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
@@ -385,26 +402,22 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, onSetNote, onSetSt
           <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
           <PrivateBadge t={t} />
           <span className="ab-tname" style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
-          <button onClick={() => (editing ? setEditingNote(null) : openNote(t))} style={t.note ? { ...actBtn("#fff", "#0f172a"), background: "#0f172a" } : actBtn()}>{t.note ? "跟进 ●" : "跟进"}</button>
+          <button onClick={() => setEditingNote(editing ? null : t.id)} style={tNotes.length ? { ...actBtn("#fff", "#0f172a"), background: "#0f172a" } : actBtn()}>{tNotes.length ? "跟进 ●" : "跟进"}</button>
           <button onClick={() => onEdit(t)} style={actBtn()}>编辑</button>
           <button onClick={() => onTransfer(t)} style={actBtn("#2563eb", "#bfdbfe")}>转交</button>
           <button onClick={() => onDelete(t)} style={actBtn("#dc2626", "#fecaca")}>删除</button>
           <button onClick={() => clickStatus(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
           {flash && flash.id === t.id && <span style={{ fontSize: 12, fontWeight: 600, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap", flex: "none" }}>✓ {flash.msg}</span>}
         </div>
-        {t.note && !editing && (
-          <div style={{ padding: "0 16px 12px 88px", fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {t.note}</div>
-        )}
-        {editing && (
-          <div style={{ padding: "0 16px 14px 88px" }}>
-            <textarea value={noteDraft} autoFocus onChange={(e) => setNoteDraft(e.target.value)} rows={2} placeholder="写进一步的进展或消息…"
-              style={{ width: "100%", padding: 10, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <button onClick={() => saveNote(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
-              <button onClick={() => setEditingNote(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>取消</button>
-            </div>
-          </div>
-        )}
+        <NoteThread
+          notes={tNotes}
+          editing={editing}
+          onCloseEditor={() => setEditingNote(null)}
+          onAdd={(body) => onAddNote(t.id, body)}
+          onDelete={onDeleteNote}
+          canDelete={(n) => isAdmin || (!!meId && n.author_id === meId)}
+          labels={NOTE_LABELS}
+        />
         {editingStart === t.id && (
           <div style={{ padding: "0 16px 14px 88px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: 12, color: "#64748b" }}>开始时间</span>

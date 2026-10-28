@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import NoteThread, { type TaskNote } from "../_shared/NoteThread";
 
 type TaskState = "todo" | "doing" | "done";
 type Task = {
@@ -36,6 +37,7 @@ const T = {
     doneTitle: "确认完成", doneMsg: "确定把这条任务标记为「已完成」吗？", doneConfirm: "确认完成",
     transfer: "转交", transferTitle: "转交任务", transferTo: "转交给：", transferConfirm: "确认转交", transferring: "提交中…",
     transferDone: "已转交给", transferFail: "转交失败：", noTargets: "没有可转交的人", managerTag: "经理", adminTag: "管理员",
+    noteAdd: "添加跟进", noteAdding: "保存中…", noteDelConfirm: "删除这条跟进？", noteLegacy: "（原备注）", noteFail: "保存失败：",
   },
   en: {
     brand: "GNG Task System", hi: "Hi", todayCount: "Today", myTasks: "My Tasks",
@@ -59,6 +61,7 @@ const T = {
     doneTitle: "Mark as done", doneMsg: "Mark this task as completed?", doneConfirm: "Confirm",
     transfer: "Transfer", transferTitle: "Transfer task", transferTo: "Transfer to:", transferConfirm: "Transfer", transferring: "Sending…",
     transferDone: "Transferred to", transferFail: "Transfer failed: ", noTargets: "No one to transfer to", managerTag: "Manager", adminTag: "Admin",
+    noteAdd: "Add follow-up", noteAdding: "Saving…", noteDelConfirm: "Delete this follow-up?", noteLegacy: "(earlier note)", noteFail: "Save failed: ",
   },
 };
 
@@ -159,7 +162,7 @@ const empModal: React.CSSProperties = { width: "100%", maxWidth: 380, background
 const empGhostBtn: React.CSSProperties = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 8, padding: "9px 14px", fontSize: 14, cursor: "pointer" };
 const empDangerBtn: React.CSSProperties = { background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
 
-export default function EmployeeBoard({ me, tasks: initialTasks, staff, transferTargets = [] }: { me: Me; tasks: Task[]; staff: Staff[]; transferTargets?: Target[] }) {
+export default function EmployeeBoard({ me, tasks: initialTasks, staff, transferTargets = [], notes: initialNotes = [] }: { me: Me; tasks: Task[]; staff: Staff[]; transferTargets?: Target[]; notes?: TaskNote[] }) {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [newTask, setNewTask] = useState("");
@@ -168,7 +171,6 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
   const [busy, setBusy] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [editingNote, setEditingNote] = useState<string | null>(null);
-  const [noteDraft, setNoteDraft] = useState("");
   const [editingName, setEditingName] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
@@ -205,6 +207,13 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
   const t = T[lang];
 
   useEffect(() => { setTasks(initialTasks); }, [initialTasks]);
+  const [notes, setNotes] = useState<TaskNote[]>(initialNotes);
+  useEffect(() => { setNotes(initialNotes); }, [initialNotes]);
+  const notesByTask = useMemo(() => {
+    const m: Record<string, TaskNote[]> = {};
+    notes.forEach((n) => { (m[n.task_id] ||= []).push(n); });
+    return m;
+  }, [notes]);
 
   const staffMap = useMemo(() => {
     const m: Record<string, string> = {};
@@ -318,13 +327,18 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
   };
 
-  const openNote = (task: Task) => { setEditingNote(task.id); setNoteDraft(task.note ?? ""); };
-  const saveNote = async (task: Task) => {
-    const note = noteDraft.trim();
-    setEditingNote(null);
-    setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, note: note || null } : x)));
-    const ok = await api({ action: "setNote", task_id: task.id, note });
-    if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
+  const addNote = async (taskId: string, body: string): Promise<boolean> => {
+    const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "addNote", task_id: taskId, body }) });
+    const data = await res.json().catch(() => ({} as any));
+    if (!res.ok || !data?.note) { alert(t.noteFail + (data?.error || `HTTP ${res.status}`)); return false; }
+    setNotes((prev) => [...prev, data.note]);
+    return true;
+  };
+  const deleteNote = async (note: TaskNote) => {
+    const backup = notes;
+    setNotes((prev) => prev.filter((n) => n.id !== note.id));
+    const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deleteNote", note_id: note.id }) });
+    if (!res.ok) { setNotes(backup); const d = await res.json().catch(() => ({} as any)); alert(t.deleteFail + (d?.error || `HTTP ${res.status}`)); }
   };
   const openEditName = (task: Task) => { setEditingName(task.id); setNameDraft(task.name); };
   const saveName = async (task: Task) => {
@@ -438,6 +452,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
   const card = (x: Task) => {
     const mine = x.assignee_id === me.id;
     const editing = editingNote === x.id;
+    const xNotes: TaskNote[] = notesByTask[x.id] ?? [];
     const needsAck = mine && !!x.created_by && x.created_by !== me.id && !x.acknowledged;
     return (
       <div style={{ background: mine ? "#fff" : "#faf5ff", border: `1px solid ${needsAck ? "#f59e0b" : "#e2e8f0"}`, borderLeft: `4px solid ${mine ? "#2563eb" : "#a855f7"}`, borderRadius: 10, overflow: "hidden" }}>
@@ -452,7 +467,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
             {mine ? (
               <>
                 <button onClick={() => (editingName === x.id ? setEditingName(null) : openEditName(x))} style={subBtnStyle}>{t.edit}</button>
-                <button onClick={() => (editing ? setEditingNote(null) : openNote(x))} style={noteBtnStyle(!!x.note)}>{t.note}</button>
+                <button onClick={() => setEditingNote(editing ? null : x.id)} style={noteBtnStyle(xNotes.length > 0)}>{t.note}</button>
                 <button onClick={() => (addingSubFor === x.id ? setAddingSubFor(null) : openSub(x))} style={subBtnStyle}>{t.subAdd}</button>
                 {x.state !== "done" && transferTargets.length > 0 && <button onClick={() => openTransfer(x)} style={transferBtnStyle}>{t.transfer}</button>}
                 <button onClick={() => setConfirmDelete(x)} style={delBtnStyle}>{t.delete}</button>
@@ -475,19 +490,17 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
         {x.parent_id && (
           <div className="emp-note" style={{ fontSize: 12, color: "#94a3b8", paddingTop: 0 }}>↳ {nameById[x.parent_id] ? `${t.belongsTo}「${nameById[x.parent_id]}」` : t.subtaskGeneric}</div>
         )}
-        {x.note && !editing && (
-          <div className="emp-note" style={{ fontSize: 13, color: "#64748b", whiteSpace: "pre-wrap" }}>📝 {x.note}</div>
-        )}
-        {editing && (
-          <div className="emp-note">
-            <textarea value={noteDraft} autoFocus onChange={(e) => setNoteDraft(e.target.value)} rows={2} placeholder={t.notePlaceholder}
-              style={{ width: "100%", padding: 10, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <button onClick={() => saveNote(x)} style={smallPrimary}>{t.save}</button>
-              <button onClick={() => setEditingNote(null)} style={smallGhost}>{t.cancel}</button>
-            </div>
-          </div>
-        )}
+        <NoteThread
+          className="emp-note"
+          notes={xNotes}
+          editing={editing}
+          onCloseEditor={() => setEditingNote(null)}
+          onAdd={(body) => addNote(x.id, body)}
+          onDelete={deleteNote}
+          canDelete={(n) => n.author_id === me.id}
+          labels={{ placeholder: t.notePlaceholder, add: t.noteAdd, adding: t.noteAdding, cancel: t.cancel, delete: t.delete, confirmDelete: t.noteDelConfirm, unknownAuthor: t.noteLegacy }}
+          lang={lang}
+        />
         {editingName === x.id && (
           <div className="emp-note">
             <textarea value={nameDraft} autoFocus onChange={(e) => setNameDraft(e.target.value)} rows={2} placeholder={t.editPlaceholder}
