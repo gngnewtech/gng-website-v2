@@ -3,10 +3,15 @@
 // DO 流程：DO → DO BACK → 递交发票 → 收款 → 采购 → 付款 → 完成
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 type Me = { id: string; name: string; isAdmin: boolean; canManage: boolean };
 type Emp = { id: string; name: string; role: string | null };
 type Order = { id: string; title: string; do_no: string | null; invoice_no: string | null; assignee_id: string; created_at: string; done_at: string | null };
+type DFile = { id: string; order_id: string; path: string; name: string; mime: string | null; size: number | null; uploaded_by: string | null; uploaded_by_name: string | null; created_at: string };
+const BUCKET = "do-files";
+const MAX_MB = 10;
+const isImg = (f: { mime: string | null; name: string }) => (f.mime ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(f.name);
 type Step = { id: string; order_id: string; step_no: number; name: string; done_at: string | null; done_by_name: string | null };
 
 async function api(body: any) {
@@ -24,6 +29,10 @@ function fmt(iso: string | null) {
 
 const CSS = `
 .do * { box-sizing: border-box; }
+.do-files { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.do-tile { position: relative; width: 76px; height: 76px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc; overflow: hidden; cursor: pointer; flex: none; padding: 0; }
+.do-tile:hover { border-color: #94a3b8; }
+.do-tile .x { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 999px; border: none; background: rgba(15,23,42,.65); color: #fff; font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; padding: 0; }
 .do-steps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 @media (max-width: 720px) {
   .do-main { padding: 16px !important; }
@@ -44,8 +53,14 @@ const modal: React.CSSProperties = { width: "100%", maxWidth: 420, background: "
 const label: React.CSSProperties = { fontSize: 13, color: "#64748b", margin: "14px 0 6px", display: "block" };
 const numChip = (has: boolean): React.CSSProperties => ({ fontSize: 12, padding: "2px 9px", borderRadius: 999, whiteSpace: "nowrap", flex: "none", border: `1px solid ${has ? "#bfdbfe" : "#e2e8f0"}`, background: has ? "#eff6ff" : "#fff", color: has ? "#1d4ed8" : "#94a3b8" });
 
-export default function DoBoard({ me, email, employees, orders: ordersProp, steps: stepsProp }: { me: Me; email: string; employees: Emp[]; orders: Order[]; steps: Step[] }) {
+export default function DoBoard({ me, email, employees, orders: ordersProp, steps: stepsProp, files: filesProp = [] }: { me: Me; email: string; employees: Emp[]; orders: Order[]; steps: Step[]; files?: DFile[] }) {
   const router = useRouter();
+  const sb = useMemo(() => createClient(), []);
+  const [files, setFiles] = useState<DFile[]>(filesProp);
+  useEffect(() => { setFiles(filesProp); }, [filesProp]);
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [confirmFile, setConfirmFile] = useState<DFile | null>(null);
   const [orders, setOrders] = useState<Order[]>(ordersProp);
   const [steps, setSteps] = useState<Step[]>(stepsProp);
   useEffect(() => { setOrders(ordersProp); }, [ordersProp]);
@@ -66,6 +81,67 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
     Object.values(m).forEach((l) => l.sort((a, b) => a.step_no - b.step_no));
     return m;
   }, [steps]);
+
+  const filesOf = useMemo(() => {
+    const m: Record<string, DFile[]> = {};
+    files.forEach((f) => { (m[f.order_id] ||= []).push(f); });
+    return m;
+  }, [files]);
+
+  // 图片缩略图：私有桶，用 1 小时有效的签名链接
+  useEffect(() => {
+    const need = files.filter((f) => isImg(f) && !thumbs[f.path]).map((f) => f.path);
+    if (!need.length) return;
+    let alive = true;
+    sb.storage.from(BUCKET).createSignedUrls(need, 3600).then(({ data }: any) => {
+      if (!alive || !data) return;
+      setThumbs((prev) => { const n = { ...prev }; data.forEach((d: any) => { if (d.signedUrl && d.path) n[d.path] = d.signedUrl; }); return n; });
+    });
+    return () => { alive = false; };
+  }, [files, sb]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const upload = async (o: Order, list: FileList | null) => {
+    if (!list || !list.length) return;
+    const picked = Array.from(list);
+    const bad = picked.find((f) => !(f.type.startsWith("image/") || f.type === "application/pdf" || /\.(pdf|png|jpe?g|webp|gif|heic|heif)$/i.test(f.name)));
+    if (bad) { showToast(`只能上传图片或 PDF：${bad.name}`); return; }
+    const big = picked.find((f) => f.size > MAX_MB * 1024 * 1024);
+    if (big) { showToast(`文件超过 ${MAX_MB}MB：${big.name}`); return; }
+    setUploading(o.id);
+    let okCount = 0;
+    for (const f of picked) {
+      const ext = (f.name.match(/\.([a-z0-9]+)$/i)?.[1] ?? (f.type === "application/pdf" ? "pdf" : "png")).toLowerCase();
+      const path = `${o.id}/${crypto.randomUUID()}.${ext}`;
+      const mime = f.type || (ext === "pdf" ? "application/pdf" : `image/${ext === "jpg" ? "jpeg" : ext}`);
+      const up = await sb.storage.from(BUCKET).upload(path, f, { contentType: mime, upsert: false });
+      if (up.error) { showToast(`上传失败：${up.error.message}`); continue; }
+      const { data, error } = await sb.from("do_files")
+        .insert({ order_id: o.id, path, name: f.name, mime, size: f.size })
+        .select("id, order_id, path, name, mime, size, uploaded_by, uploaded_by_name, created_at")
+        .single();
+      if (error || !data) { await sb.storage.from(BUCKET).remove([path]); showToast(`保存失败：${error?.message ?? ""}`); continue; }
+      setFiles((prev) => [...prev, data as DFile]);
+      okCount++;
+    }
+    setUploading(null);
+    if (okCount) showToast(`已上传 ${okCount} 个附件`);
+  };
+
+  const openFile = async (f: DFile) => {
+    const w = window.open("", "_blank"); // 先同步开窗口，避免手机浏览器拦截
+    const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(f.path, 600);
+    if (error || !data?.signedUrl) { w?.close(); showToast("打开失败"); return; }
+    if (w) w.location.href = data.signedUrl; else window.location.href = data.signedUrl;
+  };
+
+  const removeFile = async (f: DFile) => {
+    setConfirmFile(null);
+    const { data, error } = await sb.from("do_files").delete().eq("id", f.id).select("id");
+    if (error || !data?.length) { showToast(error?.message || "无权限删除"); return; }
+    await sb.storage.from(BUCKET).remove([f.path]);
+    setFiles((prev) => prev.filter((x) => x.id !== f.id));
+    showToast("已删除附件");
+  };
 
   const q = query.trim().toLowerCase();
   const visible = orders.filter((o) => !q || [o.title, o.do_no, o.invoice_no, empName[o.assignee_id]].some((v) => (v ?? "").toLowerCase().includes(q)));
@@ -142,6 +218,47 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
             );
           })}
         </div>
+        {(() => {
+          const fl = filesOf[o.id] ?? [];
+          const busyUp = uploading === o.id;
+          return (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed #e2e8f0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: fl.length ? 8 : 0 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>📎 附件</span>
+                {fl.length > 0 && <span style={{ fontSize: 12, color: "#64748b" }}>{fl.length}</span>}
+                <label style={{ ...actBtn(), marginLeft: "auto", opacity: busyUp ? 0.5 : 1, cursor: busyUp ? "default" : "pointer" }}>
+                  {busyUp ? "上传中…" : "+ 截图 / PDF"}
+                  <input type="file" accept="image/*,application/pdf" multiple disabled={busyUp} style={{ display: "none" }}
+                    onChange={(e) => { const l = e.target.files; upload(o, l); e.target.value = ""; }} />
+                </label>
+              </div>
+              {fl.length > 0 && (
+                <div className="do-files">
+                  {fl.map((f) => {
+                    const img = isImg(f);
+                    const canDel = me.canManage || f.uploaded_by === me.id;
+                    return (
+                      <div key={f.id} className="do-tile" role="button" onClick={() => openFile(f)}
+                        title={`${f.name}\n${f.uploaded_by_name ?? ""} ${fmt(f.created_at)}`}>
+                        {img
+                          ? (thumbs[f.path]
+                              ? <img src={thumbs[f.path]} alt={f.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                              : <span style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🖼</span>)
+                          : (
+                            <span style={{ display: "flex", flexDirection: "column", height: "100%", alignItems: "center", justifyContent: "center", gap: 3, padding: "0 6px", background: "#fef2f2" }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", letterSpacing: ".05em" }}>PDF</span>
+                              <span style={{ fontSize: 10, color: "#64748b", width: "100%", textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</span>
+                            </span>
+                          )}
+                        {canDel && <button className="x" aria-label="删除附件" onClick={(e) => { e.stopPropagation(); setConfirmFile(f); }}>×</button>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -217,11 +334,25 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
         <div style={overlay} onClick={() => setConfirmDelete(null)}>
           <div style={modal} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>确认删除</h3>
-            <p style={{ fontSize: 14, color: "#64748b", margin: "10px 0 4px" }}>确定删除这张 DO 单吗？7 个步骤记录会一起删除，不可撤销。</p>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "10px 0 4px" }}>确定删除这张 DO 单吗？7 个步骤记录和所有附件会一起删除，不可撤销。</p>
             <p style={{ fontSize: 15, fontWeight: 600, margin: "0 0 20px", wordBreak: "break-word" }}>{confirmDelete.title}</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button onClick={() => setConfirmDelete(null)} style={btnGhost}>取消</button>
               <button onClick={() => doDelete(confirmDelete)} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmFile && (
+        <div style={overlay} onClick={() => setConfirmFile(null)}>
+          <div style={modal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>删除附件</h3>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "10px 0 4px" }}>确定删除这个附件吗？不可撤销。</p>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: "0 0 20px", wordBreak: "break-word" }}>{confirmFile.name}</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setConfirmFile(null)} style={btnGhost}>取消</button>
+              <button onClick={() => removeFile(confirmFile)} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>删除</button>
             </div>
           </div>
         </div>

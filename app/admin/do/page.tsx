@@ -38,6 +38,15 @@ export default async function DoPage() {
         .order("step_no", { ascending: true })
     : { data: [] };
 
+  // 附件（截图 / PDF）
+  const { data: files } = ids.length
+    ? await supabase
+        .from("do_files")
+        .select("id, order_id, path, name, mime, size, uploaded_by, uploaded_by_name, created_at")
+        .in("order_id", ids)
+        .order("created_at", { ascending: true })
+    : { data: [] };
+
   return (
     <DoBoard
       me={{ id: me.id, name: me.name, isAdmin: !!me.is_admin, canManage }}
@@ -45,6 +54,7 @@ export default async function DoPage() {
       employees={employees ?? []}
       orders={orders ?? []}
       steps={steps ?? []}
+      files={files ?? []}
     />
   );
 }

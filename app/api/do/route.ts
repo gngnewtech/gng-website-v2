@@ -53,6 +53,10 @@ export async function POST(req: Request) {
 
   if (action === "delete") {
     const { order_id } = body;
+    // 先删存储里的附件文件（表记录会随 DO 单级联删除）
+    const { data: files } = await supabase.from("do_files").select("path").eq("order_id", order_id);
+    const paths = (files ?? []).map((f: any) => f.path);
+    if (paths.length) await supabase.storage.from("do-files").remove(paths);
     const { data, error } = await supabase.from("do_orders").delete().eq("id", order_id).select("id");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data || data.length === 0) return NextResponse.json({ error: "无权限删除" }, { status: 403 });
