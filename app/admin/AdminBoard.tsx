@@ -243,6 +243,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
           <span className="ab-brand" style={{ color: "#fbbf24", fontFamily: "ui-monospace,monospace", letterSpacing: ".16em", fontSize: 13, whiteSpace: "nowrap" }}>● ADMIN.GNGNT.COM</span>
           <div className="ab-head-right" style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 14 }}>
             <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 999, border: "1px solid #334155", color: "#fbbf24", whiteSpace: "nowrap", flex: "none" }}>{isAdmin ? "管理员" : "经理"}</span>
+            <a href="/admin/do" style={{ color: "#cbd5e1", textDecoration: "none", whiteSpace: "nowrap", flex: "none" }}>DO 流程</a>
             {!isAdmin && <a href="/employee" style={{ color: "#cbd5e1", textDecoration: "none", whiteSpace: "nowrap", flex: "none" }}>我的任务</a>}
             <span className="ab-email" style={{ color: "#cbd5e1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{adminEmail}</span>
             <button onClick={logout} style={{ background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", fontSize: 14, whiteSpace: "nowrap", flex: "none" }}>退出</button>
