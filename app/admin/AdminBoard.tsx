@@ -32,13 +32,12 @@ const META: Record<Status, { label: string; color: string; bg: string; bar: stri
   absent: { label: "未打卡", color: "#64748b", bg: "#f1f5f9", bar: "#cbd5e1" },
 };
 const TASK_LABEL: Record<TaskState, string> = { todo: "待开始", doing: "进行中", done: "已完成" };
-// 开始时间标签（按本地时间显示）
+// 开始日期标签（按本地日期显示）
 function StartBadge({ t }: { t: Task }) {
   if (!t.start_at) return null;
   const d = new Date(t.start_at);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const txt = `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  return <span style={{ fontSize: 11, color: "#0369a1", background: "#f0f9ff", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" }}>🕐 {txt}</span>;
+  const txt = `${d.getMonth() + 1}月${d.getDate()}日`;
+  return <span style={{ fontSize: 11, color: "#0369a1", background: "#f0f9ff", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" }}>📅 {txt}</span>;
 }
 const TASK_TONE: Record<TaskState, { color: string; bg: string }> = {
   todo: { color: "#64748b", bg: "#f1f5f9" },
@@ -143,7 +142,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
 
   const doAssign = async (empId: string, name: string, important: boolean, urgent: boolean, isPrivate: boolean, startAt: string) => {
     setBusy(true);
-    await api({ action: "assign", assignee_id: empId, name, important, urgent, is_private: isAdmin && isPrivate, start_at: startAt ? new Date(startAt).toISOString() : null });
+    await api({ action: "assign", assignee_id: empId, name, important, urgent, is_private: isAdmin && isPrivate, start_at: startAt ? new Date(`${startAt}T00:00`).toISOString() : null });
     setBusy(false); setAssignOpen(false); router.refresh();
   };
   const doTransfer = async (taskId: string, toId: string) => {
@@ -381,11 +380,11 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
     if (!iso) return "";
     const d = new Date(iso);
     const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
   const openStart = (t: Task) => { setEditingStart(t.id); setStartDraft(toLocalInput(t.start_at)); };
   const saveStart = (t: Task, override?: string | null) => {
-    const iso = override !== undefined ? override : (startDraft ? new Date(startDraft).toISOString() : null);
+    const iso = override !== undefined ? override : (startDraft ? new Date(`${startDraft}T00:00`).toISOString() : null);
     setEditingStart(null); onSetStart(t.id, iso);
   };
   const activeTasks = sorted.filter((t: Task) => t.state !== "done");
@@ -398,7 +397,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
       <div key={t.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
         <div className="ab-trow" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
           <StartBadge t={t} />
-          <button onClick={() => (editingStart === t.id ? setEditingStart(null) : openStart(t))} style={{ fontSize: 13, padding: "3px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${t.start_at ? "#0369a1" : "#cbd5e1"}`, background: t.start_at ? "#0369a1" : "#fff", color: t.start_at ? "#fff" : "#475569", flex: "none" }}>时间</button>
+          <button onClick={() => (editingStart === t.id ? setEditingStart(null) : openStart(t))} style={{ fontSize: 13, padding: "3px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${t.start_at ? "#0369a1" : "#cbd5e1"}`, background: t.start_at ? "#0369a1" : "#fff", color: t.start_at ? "#fff" : "#475569", flex: "none" }}>日期</button>
           <button onClick={() => onSetPriority(t, !t.important, t.urgent)} style={chipStyle(t.important, "#1d4ed8")}>重要</button>
           <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
           <PrivateBadge t={t} />
@@ -421,8 +420,8 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
         />
         {editingStart === t.id && (
           <div style={{ padding: "0 16px 14px 88px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: 12, color: "#64748b" }}>开始时间</span>
-            <input type="datetime-local" value={startDraft} onChange={(e) => setStartDraft(e.target.value)} style={{ padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none" }} />
+            <span style={{ fontSize: 12, color: "#64748b" }}>开始日期</span>
+            <input type="date" value={startDraft} onChange={(e) => setStartDraft(e.target.value)} style={{ padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none" }} />
             <button onClick={() => saveStart(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
             <button onClick={() => saveStart(t, null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>清除</button>
             <button onClick={() => setEditingStart(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>取消</button>
@@ -535,8 +534,8 @@ function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign
           归入象限：<span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color: QUAD_META[q].color, background: QUAD_META[q].bg }}>{QUAD_META[q].label}</span>
         </div>
         <div style={{ height: 16 }} />
-        <label style={lbl}>开始时间（可留空）</label>
-        <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} style={field} />
+        <label style={lbl}>开始日期（可留空）</label>
+        <input type="date" value={startAt} onChange={(e) => setStartAt(e.target.value)} style={field} />
         {canPrivate && (
           <label style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#475569", cursor: "pointer" }}>
             <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} style={{ width: 16, height: 16, accentColor: "#7c3aed" }} />
