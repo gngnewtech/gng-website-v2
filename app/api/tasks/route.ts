@@ -2,6 +2,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+// 重复规则：每天 / 每周 / 每月；其他值视为不重复
+const RECURS = ["daily", "weekly", "monthly"];
+const cleanRecur = (v: any) => (RECURS.includes(v) ? v : null);
+
 async function getContext() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -34,6 +38,7 @@ export async function POST(req: Request) {
       p_urgent: !!urgent,
       p_start_at: start_at || null,
       p_private: !!is_private, // 只有管理员能建私密任务（数据库会校验）
+      p_recur: cleanRecur(body.recur), // 重复：每天/每周/每月（没填日期则从今天开始）
     });
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
     return NextResponse.json({ ok: true });
@@ -63,6 +68,13 @@ export async function POST(req: Request) {
       .update(patch)
       .eq("id", task_id);
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
+    // 重复任务完成后自动生成下一次（不是重复任务时数据库直接返回 null）
+    if (state === "done") {
+      const { data: spawned, error: se } = await (supabase as any).rpc("spawn_recur_task", { p_task: task_id });
+      // 状态已经改成功了；生成下一次失败不影响本次完成
+      if (se) return NextResponse.json({ ok: true, spawned: null, spawnError: se.message });
+      return NextResponse.json({ ok: true, spawned: spawned ?? null });
+    }
     return NextResponse.json({ ok: true });
   }
 
@@ -126,7 +138,12 @@ export async function POST(req: Request) {
   if (action === "setStart") {
     const { task_id, start_at } = body;
     // 修改任务开始时间（清空传 null）；管理员/经理可改看得到的任务，普通员工只能改自己的
-    let uq = supabase.from("tasks").update({ start_at: start_at || null }).eq("id", task_id);
+    // 带 recur 字段时一并修改重复规则；清空日期 = 取消重复
+    const patch: any = { start_at: start_at || null };
+    if ("recur" in body) patch.recur = start_at ? cleanRecur(body.recur) : null;
+    if (!start_at) patch.recur = null;
+    patch.recur_anchor = null; // 日期改了，重复基准跟着新日期走
+    let uq = (supabase as any).from("tasks").update(patch).eq("id", task_id);
     if (!me.is_admin && !me.is_manager) uq = uq.eq("assignee_id", me.id);
     const { error: e } = await uq;
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });

@@ -7,7 +7,7 @@ import NoteThread, { type TaskNote } from "../_shared/NoteThread";
 const NOTE_LABELS = { placeholder: "写进一步的进展或消息…", add: "添加跟进", adding: "保存中…", cancel: "取消", delete: "删除", confirmDelete: "删除这条跟进？", unknownAuthor: "（原备注）" };
 
 type TaskState = "todo" | "doing" | "done";
-type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null };
+type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null; recur?: Recur | null };
 type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean; is_admin?: boolean; is_manager?: boolean; user_id?: string | null };
 
 function stats(tasks: Task[]) {
@@ -32,12 +32,28 @@ const META: Record<Status, { label: string; color: string; bg: string; bar: stri
   absent: { label: "未打卡", color: "#64748b", bg: "#f1f5f9", bar: "#cbd5e1" },
 };
 const TASK_LABEL: Record<TaskState, string> = { todo: "待开始", doing: "进行中", done: "已完成" };
-// 开始日期标签（按本地日期显示）
+// —— 重复规则 ——
+type Recur = "daily" | "weekly" | "monthly";
+const RECUR_LABEL: Record<Recur, string> = { daily: "每天", weekly: "每周", monthly: "每月" };
+const RECUR_OPTIONS: { v: Recur | ""; label: string }[] = [
+  { v: "", label: "不重复" }, { v: "daily", label: "每天" }, { v: "weekly", label: "每周" }, { v: "monthly", label: "每月" },
+];
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const dayKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+// 是否是「今天」的未完成任务（按本地日期）
+function isToday(t: Task) {
+  return !!t.start_at && t.state !== "done" && dayKey(new Date(t.start_at)) === dayKey(new Date());
+}
+// 开始日期标签（按本地日期显示）；今天的任务用醒目的橙色「今天」
 function StartBadge({ t }: { t: Task }) {
   if (!t.start_at) return null;
   const d = new Date(t.start_at);
   const txt = `${d.getMonth() + 1}月${d.getDate()}日`;
-  return <span style={{ fontSize: 11, color: "#0369a1", background: "#f0f9ff", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" }}>📅 {txt}</span>;
+  const recur = t.recur ? ` · 🔁${RECUR_LABEL[t.recur]}` : "";
+  if (isToday(t)) {
+    return <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: "#f59e0b", borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap", flex: "none" }}>📅 今天 {txt}{recur}</span>;
+  }
+  return <span style={{ fontSize: 11, color: "#0369a1", background: "#f0f9ff", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", flex: "none" }}>📅 {txt}{recur}</span>;
 }
 const TASK_TONE: Record<TaskState, { color: string; bg: string }> = {
   todo: { color: "#64748b", bg: "#f1f5f9" },
@@ -72,6 +88,11 @@ function byTimeUrgent(a: Task, b: Task) {
   const au = a.urgent ? 0 : 1, bu = b.urgent ? 0 : 1;              // 同一时间/都没时间：紧急优先
   if (au !== bu) return au - bu;
   return byPriority(a, b);
+}
+// 今天的任务排最前，其余按原规则
+function byTodayFirst(a: Task, b: Task) {
+  const at = isToday(a) ? 0 : 1, bt = isToday(b) ? 0 : 1;
+  return at !== bt ? at - bt : byTimeUrgent(a, b);
 }
 // 私密任务标记（只有管理员会拿到私密任务，经理那边数据库已过滤）
 function PrivateBadge({ t }: { t: Task }) {
@@ -140,9 +161,11 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
 
   const filtered = employees.filter((e) => e.name.includes(query) || (e.role ?? "").includes(query) || (e.dept ?? "").includes(query));
 
-  const doAssign = async (empId: string, name: string, important: boolean, urgent: boolean, isPrivate: boolean, startAt: string) => {
+  const doAssign = async (empId: string, name: string, important: boolean, urgent: boolean, isPrivate: boolean, startAt: string, recur: Recur | "") => {
     setBusy(true);
-    await api({ action: "assign", assignee_id: empId, name, important, urgent, is_private: isAdmin && isPrivate, start_at: startAt ? new Date(`${startAt}T00:00`).toISOString() : null });
+    // 设了重复但没选日期 → 从今天开始
+    const day = startAt || (recur ? dayKey(new Date()) : "");
+    await api({ action: "assign", assignee_id: empId, name, important, urgent, is_private: isAdmin && isPrivate, start_at: day ? new Date(`${day}T00:00`).toISOString() : null, recur: recur || null });
     setBusy(false); setAssignOpen(false); router.refresh();
   };
   const doTransfer = async (taskId: string, toId: string) => {
@@ -153,6 +176,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   const doCycle = async (task: Task) => {
     // 已完成再点 → 复制一条新的「待开始」任务给同一员工，原任务保持已完成
     if (task.state === "done") {
+      if (task.recur) { showToast("重复任务已自动生成下一次"); return; }
       await api({ action: "assign", assignee_id: task.assignee_id, name: task.name, important: task.important, urgent: task.urgent, is_private: isAdmin && !!task.is_private });
       router.refresh();
       return;
@@ -163,6 +187,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
     setTasks((prev) => prev.map((x) => (x.id === task.id ? { ...x, state: next, done_at: next === "done" ? new Date().toISOString() : null } : x)));
     const ok = await api({ action: "setState", task_id: task.id, state: next });
     if (!ok) setTasks((prev) => prev.map((x) => (x.id === task.id ? task : x)));
+    else if (next === "done" && task.recur) showToast(`已生成下一次（${RECUR_LABEL[task.recur]}）`);
     router.refresh();
   };
   const doSetPriority = async (task: Task, important: boolean, urgent: boolean) => {
@@ -182,8 +207,9 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
     const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deleteNote", note_id: note.id }) });
     if (!res.ok) { setNotes(backup); const d = await res.json().catch(() => ({} as any)); showToast(d?.error || "删除失败"); }
   };
-  const doSetStart = async (taskId: string, startIso: string | null) => {
-    await api({ action: "setStart", task_id: taskId, start_at: startIso });
+  const doSetStart = async (taskId: string, startIso: string | null, recur: Recur | null) => {
+    setTasks((prev) => prev.map((x) => (x.id === taskId ? { ...x, start_at: startIso, recur: startIso ? recur : null } : x)));
+    await api({ action: "setStart", task_id: taskId, start_at: startIso, recur });
     router.refresh();
   };
   const doSetCredentials = async (employeeId: string, email: string, password: string) => {
@@ -283,7 +309,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {filtered.map((emp) => {
                 const t = tasksOf(emp.id); const s = stats(t); const m = META[statusOf(emp, t)];
-                const pending = t.filter((x) => x.state !== "done").sort(byTimeUrgent);
+                const pending = t.filter((x) => x.state !== "done").sort(byTodayFirst);
                 return (
                   <button key={emp.id} onClick={() => setSelectedId(emp.id)} style={{ ...rowStyle, alignItems: "stretch", flexDirection: "column", gap: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 16, width: "100%" }}>
@@ -306,10 +332,10 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
                     {pending.length > 0 && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 60 }}>
                         {pending.map((x) => (
-                          <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                          <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, ...(isToday(x) ? { background: "#fffbeb", borderLeft: "3px solid #f59e0b", borderRadius: 4, padding: "3px 8px", marginLeft: -11 } : {}) }}>
                             <QuadBadge t={x} />
                             <PrivateBadge t={x} />
-                            <span style={{ color: "#334155" }}>{x.name}</span>
+                            <span style={{ color: isToday(x) ? "#0f172a" : "#334155", fontWeight: isToday(x) ? 700 : 400 }}>{x.name}</span>
                             <StartBadge t={x} />
                             <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: TASK_TONE[x.state].color, background: TASK_TONE[x.state].bg }}>{TASK_LABEL[x.state]}</span>
                           </div>
@@ -357,7 +383,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
   const sorted = [...tasks].sort((a, b) => {
     // 已完成的排到最后；其余：紧急优先 → 有时间的按时间 → 无时间的在后
     const ad = a.state === "done" ? 1 : 0, bd = b.state === "done" ? 1 : 0;
-    return ad !== bd ? ad - bd : byTimeUrgent(a, b);
+    return ad !== bd ? ad - bd : byTodayFirst(a, b);
   });
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [flash, setFlash] = useState<{ id: string; msg: string } | null>(null);
@@ -376,16 +402,19 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
   };
   const [editingStart, setEditingStart] = useState<string | null>(null);
   const [startDraft, setStartDraft] = useState("");
+  const [recurDraft, setRecurDraft] = useState<Recur | "">("");
   const toLocalInput = (iso?: string | null) => {
     if (!iso) return "";
     const d = new Date(iso);
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
-  const openStart = (t: Task) => { setEditingStart(t.id); setStartDraft(toLocalInput(t.start_at)); };
+  const openStart = (t: Task) => { setEditingStart(t.id); setStartDraft(toLocalInput(t.start_at)); setRecurDraft(t.recur ?? ""); };
   const saveStart = (t: Task, override?: string | null) => {
-    const iso = override !== undefined ? override : (startDraft ? new Date(`${startDraft}T00:00`).toISOString() : null);
-    setEditingStart(null); onSetStart(t.id, iso);
+    // 选了重复但没选日期 → 从今天开始
+    const day = startDraft || (recurDraft ? dayKey(new Date()) : "");
+    const iso = override !== undefined ? override : (day ? new Date(`${day}T00:00`).toISOString() : null);
+    setEditingStart(null); onSetStart(t.id, iso, iso ? (recurDraft || null) : null);
   };
   const activeTasks = sorted.filter((t: Task) => t.state !== "done");
   const doneTasks = sorted.filter((t: Task) => t.state === "done");
@@ -393,15 +422,18 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
   const renderRow = (t: Task) => {
     const editing = editingNote === t.id;
     const tNotes: TaskNote[] = notesByTask[t.id] ?? [];
+    const today = isToday(t);
     return (
-      <div key={t.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+      <div key={t.id} style={today
+        ? { background: "#fffbeb", border: "2px solid #f59e0b", borderLeft: "6px solid #f59e0b", borderRadius: 8, overflow: "hidden", boxShadow: "0 4px 14px rgba(245,158,11,.25)" }
+        : { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
         <div className="ab-trow" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
           <StartBadge t={t} />
           <button onClick={() => (editingStart === t.id ? setEditingStart(null) : openStart(t))} style={{ fontSize: 13, padding: "3px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${t.start_at ? "#0369a1" : "#cbd5e1"}`, background: t.start_at ? "#0369a1" : "#fff", color: t.start_at ? "#fff" : "#475569", flex: "none" }}>日期</button>
           <button onClick={() => onSetPriority(t, !t.important, t.urgent)} style={chipStyle(t.important, "#1d4ed8")}>重要</button>
           <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
           <PrivateBadge t={t} />
-          <span className="ab-tname" style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : "#334155" }}>{t.name}</span>
+          <span className="ab-tname" style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : today ? "#0f172a" : "#334155", fontWeight: today ? 700 : 400 }}>{t.name}</span>
           <button onClick={() => setEditingNote(editing ? null : t.id)} style={tNotes.length ? { ...actBtn("#fff", "#0f172a"), background: "#0f172a" } : actBtn()}>{tNotes.length ? "跟进 ●" : "跟进"}</button>
           <button onClick={() => onEdit(t)} style={actBtn()}>编辑</button>
           <button onClick={() => onTransfer(t)} style={actBtn("#2563eb", "#bfdbfe")}>转交</button>
@@ -422,6 +454,10 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
           <div style={{ padding: "0 16px 14px 88px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: 12, color: "#64748b" }}>开始日期</span>
             <input type="date" value={startDraft} onChange={(e) => setStartDraft(e.target.value)} style={{ padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none" }} />
+            <span style={{ fontSize: 12, color: "#64748b" }}>重复</span>
+            <select value={recurDraft} onChange={(e) => setRecurDraft(e.target.value as Recur | "")} style={{ padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none", background: "#fff" }}>
+              {RECUR_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+            </select>
             <button onClick={() => saveStart(t)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, cursor: "pointer" }}>保存</button>
             <button onClick={() => saveStart(t, null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>清除</button>
             <button onClick={() => setEditingStart(null)} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}>取消</button>
@@ -461,7 +497,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
           <button onClick={onAssignHere} style={btnPrimary}>+ 给 {emp.name} 派任务</button>
         </div>
       </div>
-      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>按重要紧急程度排序 · 点状态字切换进度（已完成再点复制新任务）· 点「重要」「紧急」调优先级 · 点「备注」写说明</p>
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>今天的任务置顶并以橙色突出 · 点状态字切换进度（已完成再点复制新任务）· 点「日期」可设每天/每周/每月重复，完成后自动生成下一次 · 点「重要」「紧急」调优先级</p>
       {sorted.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 32, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>还没有任务</div> : (
         <>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -511,6 +547,7 @@ function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign
   const [urgent, setUrgent] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [startAt, setStartAt] = useState("");
+  const [recur, setRecur] = useState<Recur | "">("");
   const q: Quadrant = important && urgent ? 1 : important ? 2 : urgent ? 3 : 4;
   return (
     <div style={overlay} onClick={onClose}>
@@ -534,8 +571,19 @@ function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign
           归入象限：<span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color: QUAD_META[q].color, background: QUAD_META[q].bg }}>{QUAD_META[q].label}</span>
         </div>
         <div style={{ height: 16 }} />
-        <label style={lbl}>开始日期（可留空）</label>
-        <input type="date" value={startAt} onChange={(e) => setStartAt(e.target.value)} style={field} />
+        <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={lbl}>开始日期（可留空）</label>
+            <input type="date" value={startAt} onChange={(e) => setStartAt(e.target.value)} style={field} />
+          </div>
+          <div style={{ width: 120, flex: "none" }}>
+            <label style={lbl}>重复</label>
+            <select value={recur} onChange={(e) => setRecur(e.target.value as Recur | "")} style={field}>
+              {RECUR_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+            </select>
+          </div>
+        </div>
+        {recur && !startAt && <p style={{ fontSize: 12, color: "#94a3b8", margin: "6px 0 0" }}>未选日期时从今天开始</p>}
         {canPrivate && (
           <label style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#475569", cursor: "pointer" }}>
             <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} style={{ width: 16, height: 16, accentColor: "#7c3aed" }} />
@@ -544,7 +592,7 @@ function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign
         )}
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
-          <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim(), important, urgent, isPrivate, startAt)} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
+          <button disabled={busy || !name.trim()} onClick={() => onAssign(empId, name.trim(), important, urgent, isPrivate, startAt, recur)} style={{ ...btnPrimary, opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分配"}</button>
         </div>
       </div>
     </div>
