@@ -8,7 +8,7 @@ const NOTE_LABELS = { placeholder: "写进一步的进展或消息…", add: "�
 
 type TaskState = "todo" | "doing" | "done";
 type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null; recur?: Recur | null };
-type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean; is_admin?: boolean; is_manager?: boolean; user_id?: string | null };
+type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean; is_admin?: boolean; is_manager?: boolean; user_id?: string | null; username?: string | null };
 
 function stats(tasks: Task[]) {
   const total = tasks.length;
@@ -214,8 +214,8 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
     await api({ action: "setStart", task_id: taskId, start_at: startIso, recur });
     router.refresh();
   };
-  const doSetCredentials = async (employeeId: string, email: string, password: string) => {
-    const r = await empApi({ action: "setCredentials", employee_id: employeeId, email, password });
+  const doSetCredentials = async (employeeId: string, username: string, password: string) => {
+    const r = await empApi({ action: "setCredentials", employee_id: employeeId, username, password });
     if (r.ok) {
       setCredsFor(null);
       showToast(r.created ? "已开通登录账号" : "账号已更新");
@@ -224,8 +224,8 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
       showToast(r.error || "操作失败");
     }
   };
-  const doAddEmployee = async (name: string, email: string, password: string, role: string, dept: string) => {
-    const r = await empApi({ action: "addEmployee", name, email, password, role, dept });
+  const doAddEmployee = async (name: string, username: string, password: string, role: string, dept: string) => {
+    const r = await empApi({ action: "addEmployee", name, username, password, role, dept });
     if (r.ok) { setAddOpen(false); showToast("已添加员工"); router.refresh(); }
     else { showToast(r.error || "添加失败"); }
   };
@@ -522,7 +522,7 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
               </button>
             )}
           </div>
-          <p style={{ fontSize: 14, color: "#64748b", marginTop: 6 }}>{emp.dept} · {emp.role} · {emp.email}</p>
+          <p style={{ fontSize: 14, color: "#64748b", marginTop: 6 }}>{[emp.dept, emp.role, emp.username ? `@${emp.username}` : emp.email].filter(Boolean).join(" · ")}</p>
           <div style={{ marginTop: 16 }}>{bar(s.pct, m.bar)}</div>
         </div>
         <div style={{ textAlign: "right" }}>
@@ -678,7 +678,7 @@ function StaffModal({ employees, meId, countOf, onClose, onAdd, onAccount, onRem
   const [q, setQ] = useState("");
   const rank = (e: Employee) => (e.is_admin ? 0 : e.is_manager ? 1 : 2);
   const list = [...employees]
-    .filter((e: Employee) => !q || e.name.includes(q) || (e.email ?? "").toLowerCase().includes(q.toLowerCase()) || (e.role ?? "").includes(q) || (e.dept ?? "").includes(q))
+    .filter((e: Employee) => !q || e.name.includes(q) || (e.username ?? "").includes(q.toLowerCase()) || (e.email ?? "").toLowerCase().includes(q.toLowerCase()) || (e.role ?? "").includes(q) || (e.dept ?? "").includes(q))
     .sort((a: Employee, b: Employee) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   const tag = (text: string, color: string, bg: string) => (
     <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color, background: bg, whiteSpace: "nowrap", flex: "none" }}>{text}</span>
@@ -689,11 +689,11 @@ function StaffModal({ employees, meId, countOf, onClose, onAdd, onAccount, onRem
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>设置员工</h3>
-            <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>共 {employees.length} 人 · 可添加员工、修改登录邮箱和密码、删除员工</p>
+            <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>共 {employees.length} 人 · 可添加员工、修改用户名和密码、删除员工</p>
           </div>
           <button onClick={onAdd} style={{ ...btnPrimary, flex: "none" }}>+ 添加员工</button>
         </div>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索姓名、邮箱、岗位或部门…"
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索姓名、用户名、岗位或部门…"
           style={{ ...field, margin: "16px 0 12px", fontSize: 14 }} />
         <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, margin: "0 -4px", padding: "0 4px" }}>
           {list.length === 0 && <div style={{ textAlign: "center", color: "#94a3b8", padding: 24 }}>没有匹配的员工</div>}
@@ -711,7 +711,8 @@ function StaffModal({ employees, meId, countOf, onClose, onAdd, onAccount, onRem
                     {!e.user_id && tag("未开通登录", "#be123c", "#fff1f2")}
                   </div>
                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, wordBreak: "break-all" }}>
-                    {[e.role, e.dept, e.email].filter(Boolean).join(" · ") || "—"} · {countOf(e.id)} 条任务
+                    <span style={{ color: "#0f172a", fontFamily: "ui-monospace,monospace" }}>{e.username ? `@${e.username}` : "未设用户名"}</span>
+                    {[e.role, e.dept].filter(Boolean).length > 0 && ` · ${[e.role, e.dept].filter(Boolean).join(" · ")}`} · {countOf(e.id)} 条任务
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flex: "none" }}>
@@ -736,13 +737,14 @@ function StaffModal({ employees, meId, countOf, onClose, onAdd, onAccount, onRem
 
 function AddEmployeeModal({ onClose, onSave }: any) {
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("");
   const [dept, setDept] = useState("");
   const [saving, setSaving] = useState(false);
-  const canSave = name.trim() && email.trim() && password.length >= 6;
-  const submit = async () => { setSaving(true); await onSave(name.trim(), email.trim(), password, role.trim(), dept.trim()); setSaving(false); };
+  const uOk = /^[a-z0-9._-]{2,32}$/.test(username.trim());
+  const canSave = name.trim() && uOk && password.length >= 6;
+  const submit = async () => { setSaving(true); await onSave(name.trim(), username.trim(), password, role.trim(), dept.trim()); setSaving(false); };
   return (
     <div style={overlay} onClick={onClose}>
       <div style={modal} onClick={(e) => e.stopPropagation()}>
@@ -756,12 +758,13 @@ function AddEmployeeModal({ onClose, onSave }: any) {
           <div style={{ flex: 1 }}><label style={lbl}>部门（可留空）</label><input value={dept} onChange={(e) => setDept(e.target.value)} placeholder="例如：业务部" style={field} /></div>
         </div>
         <div style={{ height: 14 }} />
-        <label style={lbl}>登录邮箱</label>
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" style={field} />
+        <label style={lbl}>登录用户名</label>
+        <input value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s/g, ""))} placeholder="例如：vineetha" autoCapitalize="none" autoCorrect="off" style={field} />
+        <p style={{ fontSize: 12, color: username && !uOk ? "#dc2626" : "#94a3b8", margin: "6px 0 0" }}>2–32 位，只能用英文字母、数字、. _ -</p>
         <div style={{ height: 14 }} />
         <label style={lbl}>初始密码（至少 6 位）</label>
         <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 6 位" style={field} />
-        <p style={{ fontSize: 12, color: "#94a3b8", margin: "8px 0 0" }}>创建后请把登录邮箱和初始密码告知该员工。</p>
+        <p style={{ fontSize: 12, color: "#94a3b8", margin: "8px 0 0" }}>创建后请把用户名和初始密码告知该员工。</p>
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
           <button disabled={saving || !canSave} onClick={submit} style={{ ...btnPrimary, opacity: saving || !canSave ? 0.5 : 1 }}>{saving ? "提交中…" : "创建"}</button>
@@ -773,25 +776,27 @@ function AddEmployeeModal({ onClose, onSave }: any) {
 
 function CredentialsModal({ emp, busy, onClose, onSave }: any) {
   const hasLogin = !!emp.user_id;
-  const [email, setEmail] = useState(emp.email ?? "");
+  const [username, setUsername] = useState(emp.username ?? "");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
-  const canSave = email.trim() && (hasLogin || password.length >= 6) && (!password || password.length >= 6);
-  const submit = async () => { setSaving(true); await onSave(emp.id, email.trim(), password); setSaving(false); };
+  const uOk = /^[a-z0-9._-]{2,32}$/.test(username.trim());
+  const canSave = uOk && (hasLogin || password.length >= 6) && (!password || password.length >= 6);
+  const submit = async () => { setSaving(true); await onSave(emp.id, username.trim(), password); setSaving(false); };
   return (
     <div style={overlay} onClick={onClose}>
       <div style={modal} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{hasLogin ? "账号设置" : "开通登录"}</h3>
         <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 20px" }}>
-          {emp.name} · {hasLogin ? "可修改登录邮箱或重设密码" : "为该员工开通登录账号"}
+          {emp.name} · {hasLogin ? "可修改用户名或重设密码" : "为该员工开通登录账号"}
         </p>
-        <label style={lbl}>登录邮箱</label>
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" style={field} />
+        <label style={lbl}>登录用户名</label>
+        <input value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s/g, ""))} placeholder="例如：vineetha" autoCapitalize="none" autoCorrect="off" style={field} />
+        <p style={{ fontSize: 12, color: username && !uOk ? "#dc2626" : "#94a3b8", margin: "6px 0 0" }}>2–32 位，只能用英文字母、数字、. _ -</p>
         <div style={{ height: 16 }} />
         <label style={lbl}>{hasLogin ? "新密码（留空=不修改）" : "初始密码（至少 6 位）"}</label>
-        <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={hasLogin ? "留空则只改邮箱" : "至少 6 位"} style={field} />
+        <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={hasLogin ? "留空则不改密码" : "至少 6 位"} style={field} />
         <p style={{ fontSize: 12, color: "#94a3b8", margin: "8px 0 0" }}>
-          {hasLogin ? "填写新密码即为该员工重设密码；修改后请把新密码/邮箱告知本人。" : "开通后请把邮箱和初始密码告知该员工，首次登录后可自行使用。"}
+          {hasLogin ? "填写新密码即为该员工重设密码；修改后请把用户名和新密码告知本人。" : "开通后请把用户名和初始密码告知该员工。"}
         </p>
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>

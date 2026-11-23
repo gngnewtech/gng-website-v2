@@ -1,7 +1,7 @@
 "use client";
 
 // 放置位置：app/login/page.tsx
-// 邮箱 + 密码登录。顶部可选 中文 / English，选择会记住并带到员工端。
+// 用户名 + 密码登录（也兼容输入邮箱）。顶部可选 中文 / English，选择会记住并带到员工端。
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -9,18 +9,18 @@ import { createClient } from "@/lib/supabase/client";
 
 const T = {
   zh: {
-    title: "登录", sub: "请输入你的账号邮箱和密码。",
-    email: "邮箱", password: "密码",
+    title: "登录", sub: "请输入你的用户名和密码。",
+    email: "用户名", password: "密码",
     login: "登录", loggingIn: "登录中…",
-    errCreds: "邮箱或密码不正确，请重试。",
+    errCreds: "用户名或密码不正确，请重试。",
     errNotEmp: "此账号不在员工名单中，请联系管理员。",
     foot: "仅限 GNG New Tech 内部授权员工登录。",
   },
   en: {
-    title: "Sign in", sub: "Enter your account email and password.",
-    email: "Email", password: "Password",
+    title: "Sign in", sub: "Enter your username and password.",
+    email: "Username", password: "Password",
     login: "Sign in", loggingIn: "Signing in…",
-    errCreds: "Incorrect email or password. Please try again.",
+    errCreds: "Incorrect username or password. Please try again.",
     errNotEmp: "This account is not on the staff list. Please contact your admin.",
     foot: "For authorized GNG New Tech staff only.",
   },
@@ -71,32 +71,21 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
+    // 服务端按用户名找到账号并完成登录
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: email.trim(), password }),
     });
+    const data = await res.json().catch(() => ({}));
 
-    if (signInError) {
+    if (!res.ok || !data?.ok) {
       setLoading(false);
       setError("creds");
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: emp } = await supabase
-      .from("employees")
-      .select("is_admin, is_manager")
-      .eq("user_id", user?.id)
-      .maybeSingle();
-
-    if (!emp) {
-      await supabase.auth.signOut();
-      setLoading(false);
-      setError("notEmp");
-      return;
-    }
-
-    router.push(emp.is_admin || emp.is_manager ? "/admin" : "/employee");
+    router.push(data.dest || "/employee");
     router.refresh();
   };
 
@@ -117,11 +106,14 @@ export default function LoginPage() {
         <label style={S.label}>{t.email}</label>
         <input
           style={S.input}
-          type="email"
+          type="text"
           value={email}
           autoFocus
+          autoCapitalize="none"
+          autoCorrect="off"
+          autoComplete="username"
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@gngnt.com"
+          placeholder={lang === "zh" ? "例如：susie" : "e.g. susie"}
         />
 
         <label style={{ ...S.label, marginTop: 14 }}>{t.password}</label>
