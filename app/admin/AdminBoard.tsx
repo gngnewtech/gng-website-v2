@@ -642,9 +642,12 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
     if (error || !data?.signedUrl) { w?.close(); alert("打开失败"); return; }
     if (w) w.location.href = data.signedUrl; else window.location.href = data.signedUrl;
   };
-  const isDone = (o: DoOrder) => { const l = stepsByOrder[o.id] ?? []; return l.length > 0 && l.every((s) => s.done_at); };
+  // 已完成：7 步全勾，或最后一步「完成」已勾 → 跟已完成任务一样收到最下面
+  const finishStep = (o: DoOrder) => (stepsByOrder[o.id] ?? []).find((s) => s.step_no === 7 || s.name === "完成");
+  const isDone = (o: DoOrder) => { const l = stepsByOrder[o.id] ?? []; return l.length > 0 && (l.every((s) => s.done_at) || !!finishStep(o)?.done_at); };
+  const doneTime = (o: DoOrder) => o.done_at ?? finishStep(o)?.done_at ?? "";
   const active = orders.filter((o) => !isDone(o));
-  const done = orders.filter(isDone).sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
+  const done = orders.filter(isDone).sort((a, b) => doneTime(b).localeCompare(doneTime(a)));
   const fmtT = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
   const card = (o: DoOrder) => {
     const steps = stepsByOrder[o.id] ?? [];

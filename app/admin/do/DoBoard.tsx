@@ -209,9 +209,12 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
 
   const q = query.trim().toLowerCase();
   const visible = orders.filter((o) => !q || [o.title, o.do_no, o.invoice_no, empName[o.assignee_id]].some((v) => (v ?? "").toLowerCase().includes(q)));
-  const isDone = (o: Order) => { const l = stepsOf[o.id] ?? []; return l.length > 0 && l.every((s) => s.done_at); };
+  // 已完成：7 步全勾，或最后一步「完成」已勾 → 跟已完成任务一样收到最下面
+  const finishStep = (o: Order) => (stepsOf[o.id] ?? []).find((s) => s.step_no === 7 || s.name === "完成");
+  const isDone = (o: Order) => { const l = stepsOf[o.id] ?? []; return l.length > 0 && (l.every((s) => s.done_at) || !!finishStep(o)?.done_at); };
+  const doneTime = (o: Order) => o.done_at ?? finishStep(o)?.done_at ?? "";
   const active = visible.filter((o) => !isDone(o));
-  const done = visible.filter(isDone).sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
+  const done = visible.filter(isDone).sort((a, b) => doneTime(b).localeCompare(doneTime(a)));
 
   const toggle = async (s: Step) => {
     const next = !s.done_at;
