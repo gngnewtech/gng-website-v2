@@ -148,6 +148,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
   const [credsFor, setCredsFor] = useState<Employee | null>(null);
   const [removeEmp, setRemoveEmp] = useState<Employee | null>(null);
+  const [staffOpen, setStaffOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
 
@@ -301,6 +302,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
                 <p style={{ fontSize: 14, color: "#64748b", marginTop: 2 }}>数据实时来自数据库</p>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {isAdmin && <button onClick={() => setStaffOpen(true)} style={btnGhost}>设置员工</button>}
                 {isAdmin && <button onClick={() => setAddOpen(true)} style={btnGhost}>+ 添加员工</button>}
                 <a href="/admin/do" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>DO 流程</a>
                 <button onClick={() => { setAssignFor(undefined); setAssignOpen(true); }} style={btnPrimary}>+ 分配任务</button>
@@ -383,6 +385,11 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
       )}
       {toast && (
         <div style={{ position: "fixed", left: "50%", top: 72, transform: "translateX(-50%)", background: "#0f172a", color: "#fff", padding: "12px 22px", borderRadius: 999, fontSize: 15, fontWeight: 600, zIndex: 100, boxShadow: "0 10px 30px rgba(15,23,42,.35)", display: "flex", alignItems: "center", gap: 8 }}>✓ {toast}</div>
+      )}
+      {staffOpen && (
+        <StaffModal employees={employees} meId={meId} countOf={(id: string) => tasksOf(id).length}
+          onClose={() => setStaffOpen(false)} onAdd={() => setAddOpen(true)}
+          onAccount={(e: Employee) => setCredsFor(e)} onRemove={(e: Employee) => setRemoveEmp(e)} />
       )}
       {credsFor && <CredentialsModal emp={credsFor} busy={busy} onClose={() => setCredsFor(null)} onSave={doSetCredentials} />}
       {addOpen && <AddEmployeeModal onClose={() => setAddOpen(false)} onSave={doAddEmployee} />}
@@ -660,6 +667,67 @@ function EditTaskModal({ task, employees, onClose, onSave }: any) {
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
           <button disabled={saving || !name.trim()} onClick={submit} style={{ ...btnPrimary, opacity: saving || !name.trim() ? 0.5 : 1 }}>{saving ? "保存中…" : "保存"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 员工管理列表：所有员工一览，可添加、改账号/密码、删除（仅管理员可见）
+function StaffModal({ employees, meId, countOf, onClose, onAdd, onAccount, onRemove }: any) {
+  const [q, setQ] = useState("");
+  const rank = (e: Employee) => (e.is_admin ? 0 : e.is_manager ? 1 : 2);
+  const list = [...employees]
+    .filter((e: Employee) => !q || e.name.includes(q) || (e.email ?? "").toLowerCase().includes(q.toLowerCase()) || (e.role ?? "").includes(q) || (e.dept ?? "").includes(q))
+    .sort((a: Employee, b: Employee) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  const tag = (text: string, color: string, bg: string) => (
+    <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color, background: bg, whiteSpace: "nowrap", flex: "none" }}>{text}</span>
+  );
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={{ ...modal, maxWidth: 640, maxHeight: "86vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>设置员工</h3>
+            <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>共 {employees.length} 人 · 可添加员工、修改登录邮箱和密码、删除员工</p>
+          </div>
+          <button onClick={onAdd} style={{ ...btnPrimary, flex: "none" }}>+ 添加员工</button>
+        </div>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索姓名、邮箱、岗位或部门…"
+          style={{ ...field, margin: "16px 0 12px", fontSize: 14 }} />
+        <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, margin: "0 -4px", padding: "0 4px" }}>
+          {list.length === 0 && <div style={{ textAlign: "center", color: "#94a3b8", padding: 24 }}>没有匹配的员工</div>}
+          {list.map((e: Employee) => {
+            const isMe = e.id === meId;
+            return (
+              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 10, flexWrap: "wrap" }}>
+                <div style={{ ...avatar, width: 36, height: 36, fontSize: 13 }}>{e.name.slice(-2)}</div>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 600 }}>{e.name}</span>
+                    {e.is_admin && tag("管理员", "#b45309", "#fffbeb")}
+                    {!e.is_admin && e.is_manager && tag("经理", "#1d4ed8", "#eff6ff")}
+                    {isMe && tag("我", "#475569", "#f1f5f9")}
+                    {!e.user_id && tag("未开通登录", "#be123c", "#fff1f2")}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, wordBreak: "break-all" }}>
+                    {[e.role, e.dept, e.email].filter(Boolean).join(" · ") || "—"} · {countOf(e.id)} 条任务
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flex: "none" }}>
+                  {!e.is_admin && (
+                    <button onClick={() => onAccount(e)} style={actBtn()}>{e.user_id ? "账号设置" : "开通登录"}</button>
+                  )}
+                  {!e.is_admin && !isMe && (
+                    <button onClick={() => onRemove(e)} style={actBtn("#dc2626", "#fecaca")}>删除</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={btnGhost}>关闭</button>
         </div>
       </div>
     </div>
