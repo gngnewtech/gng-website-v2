@@ -316,7 +316,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
             onCycle={doCycle} onSetPriority={doSetPriority} notesByTask={notesByTask} onAddNote={doAddNote} onDeleteNote={doDeleteNote} meId={meId} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} onEdit={(t: Task) => setEditTask(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)} canRemove={isAdmin && !selected.is_admin && selected.id !== meId} onRemove={() => setRemoveEmp(selected)}
             onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar}
-            doOrders={doOrders.filter((o) => o.assignee_id === selected.id)} stepsByOrder={stepsByOrder} onToggleStep={doToggleStep} />
+            doOrders={doOrders} employees={employees} stepsByOrder={stepsByOrder} onToggleStep={doToggleStep} />
         ) : (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
@@ -436,7 +436,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   );
 }
 
-function Detail({ emp, tasks, doOrders = [], stepsByOrder = {}, onToggleStep, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
+function Detail({ emp, tasks, doOrders = [], employees = [], stepsByOrder = {}, onToggleStep, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort((a, b) => {
     // 已完成的排到最后；其余：紧急优先 → 有时间的按时间 → 无时间的在后
@@ -587,7 +587,7 @@ function Detail({ emp, tasks, doOrders = [], stepsByOrder = {}, onToggleStep, on
         </>
       )}
       </section>
-      <DoColumn orders={doOrders} stepsByOrder={stepsByOrder} onToggle={onToggleStep} />
+      <DoColumn emp={emp} orders={doOrders} employees={employees} stepsByOrder={stepsByOrder} onToggle={onToggleStep} />
       </div>
 
       {confirmDone && (
@@ -607,8 +607,13 @@ function Detail({ emp, tasks, doOrders = [], stepsByOrder = {}, onToggleStep, on
   );
 }
 
-function DoColumn({ orders, stepsByOrder, onToggle }: { orders: DoOrder[]; stepsByOrder: Record<string, DoStep[]>; onToggle: (s: DoStep) => void }) {
+function DoColumn({ emp, orders: allOrders, employees, stepsByOrder, onToggle }: { emp: Employee; orders: DoOrder[]; employees: Employee[]; stepsByOrder: Record<string, DoStep[]>; onToggle: (s: DoStep) => void }) {
   const [doneOpen, setDoneOpen] = useState(false);
+  // 管理员 / 经理默认看全部 DO，可切换只看当前员工的
+  const [onlyEmp, setOnlyEmp] = useState(false);
+  const empName: Record<string, string> = useMemo(() => Object.fromEntries(employees.map((e) => [e.id, e.name])), [employees]);
+  const empCount = allOrders.filter((o) => o.assignee_id === emp.id).length;
+  const orders = onlyEmp ? allOrders.filter((o) => o.assignee_id === emp.id) : allOrders;
   const isDone = (o: DoOrder) => { const l = stepsByOrder[o.id] ?? []; return l.length > 0 && l.every((s) => s.done_at); };
   const active = orders.filter((o) => !isDone(o));
   const done = orders.filter(isDone).sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
@@ -621,6 +626,7 @@ function DoColumn({ orders, stepsByOrder, onToggle }: { orders: DoOrder[]; steps
       <div key={o.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 14px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ flex: 1, minWidth: 120, fontWeight: 600, color: "#0f172a", wordBreak: "break-word" }}>{o.title}</span>
+          <span style={{ fontSize: 12, padding: "1px 8px", borderRadius: 999, flex: "none", border: `1px solid ${o.assignee_id === emp.id ? "#f59e0b" : "#e2e8f0"}`, background: o.assignee_id === emp.id ? "#fffbeb" : "#f8fafc", color: o.assignee_id === emp.id ? "#b45309" : "#64748b" }}>{empName[o.assignee_id] ?? "—"}</span>
           <span style={{ fontSize: 12, color: "#64748b", flex: "none" }}>{doneCount}/{steps.length}</span>
         </div>
         {(o.do_no || o.invoice_no) && (
@@ -652,7 +658,11 @@ function DoColumn({ orders, stepsByOrder, onToggle }: { orders: DoOrder[]; steps
         <h4 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: 0 }}>DO 单</h4>
         <a href="/admin/do" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>DO 流程 →</a>
       </div>
-      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>该员工负责的 DO · 点格子勾选步骤 · 蓝框是下一步</p>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <button onClick={() => setOnlyEmp(false)} style={chipStyle(!onlyEmp, "#0f172a")}>全部 {allOrders.length}</button>
+        <button onClick={() => setOnlyEmp(true)} style={chipStyle(onlyEmp, "#0f172a")}>只看 {emp.name} {empCount}</button>
+      </div>
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>点格子勾选步骤 · 蓝框是下一步 · 橙色名字是当前员工负责的</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {active.length === 0
           ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 24, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>没有进行中的 DO</div>
