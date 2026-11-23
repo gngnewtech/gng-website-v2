@@ -11,19 +11,21 @@ export default async function DoPage() {
 
   const { data: me } = await supabase
     .from("employees")
-    .select("id, name, is_admin, is_manager")
+    .select("*") // 读取自己这一行（含 can_see_all_do；SQL 未运行时该字段为空也不报错）
     .eq("user_id", user.id)
     .maybeSingle();
   if (!me) redirect("/login");
 
   const canManage = !!(me.is_admin || me.is_manager);
 
-  // 负责人名单（管理员/经理可选全部员工；普通员工只有自己）
+  // 负责人名单（管理员/经理可选全部员工；可查看全部 DO 的员工取全员名单用于显示负责人；普通员工只有自己）
   const { data: employees } = canManage
     ? await supabase.from("employees").select("id, name, role").order("created_at", { ascending: true })
-    : { data: [{ id: me.id, name: me.name, role: null }] };
+    : me.can_see_all_do
+      ? await supabase.rpc("get_staff")
+      : { data: [{ id: me.id, name: me.name, role: null }] };
 
-  // DO 单 + 步骤（普通员工只看到自己负责的，由 RLS 过滤）
+  // DO 单 + 步骤（普通员工只看到自己负责的；can_see_all_do 的员工看全部；由 RLS 过滤）
   const { data: orders } = await supabase
     .from("do_orders")
     .select("id, title, do_no, invoice_no, assignee_id, created_at, done_at")
