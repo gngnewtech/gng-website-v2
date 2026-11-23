@@ -47,6 +47,13 @@ export default async function AdminPage() {
         .in("order_id", doIds)
         .order("step_no", { ascending: true })
     : { data: [] };
+  const { data: doFiles } = doIds.length
+    ? await (supabase as any)
+        .from("do_files")
+        .select("id, order_id, path, name, mime, uploaded_by_name, created_at")
+        .in("order_id", doIds)
+        .order("created_at", { ascending: true })
+    : { data: [] };
 
   return (
     <AdminBoard
@@ -55,6 +62,7 @@ export default async function AdminPage() {
       notes={notes ?? []}
       doOrders={doOrders ?? []}
       doSteps={doSteps ?? []}
+      doFiles={doFiles ?? []}
       meId={me?.id ?? null}
       adminEmail={user.email ?? ""}
       isAdmin={!!me?.is_admin}

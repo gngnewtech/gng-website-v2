@@ -3,12 +3,16 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import NoteThread, { type TaskNote } from "../_shared/NoteThread";
+import { createClient } from "@/lib/supabase/client";
 
 const NOTE_LABELS = { placeholder: "写进一步的进展或消息…", add: "添加跟进", adding: "保存中…", cancel: "取消", delete: "删除", confirmDelete: "删除这条跟进？", unknownAuthor: "（原备注）" };
 
 type TaskState = "todo" | "doing" | "done";
 type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null; recur?: Recur | null };
 type DoOrder = { id: string; title: string; do_no: string | null; invoice_no: string | null; assignee_id: string; created_at: string; done_at: string | null };
+type DoFile = { id: string; order_id: string; path: string; name: string; mime: string | null; uploaded_by_name: string | null; created_at: string };
+const DO_BUCKET = "do-files";
+const isImgFile = (f: { mime: string | null; name: string }) => (f.mime ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(f.name);
 type DoStep = { id: string; order_id: string; step_no: number; name: string; done_at: string | null; done_by_name: string | null };
 type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean; is_admin?: boolean; is_manager?: boolean; user_id?: string | null; username?: string | null };
 
@@ -128,7 +132,7 @@ async function empApi(body: any): Promise<{ ok: boolean; error?: string; created
   return { ok: res.ok, error: data?.error, created: data?.created, warning: data?.warning };
 }
 
-export default function AdminBoard({ employees, tasks: tasksProp, notes: notesProp = [], doOrders = [], doSteps: doStepsProp = [], meId = null, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; notes?: TaskNote[]; doOrders?: DoOrder[]; doSteps?: DoStep[]; meId?: string | null; adminEmail: string; isAdmin: boolean }) {
+export default function AdminBoard({ employees, tasks: tasksProp, notes: notesProp = [], doOrders = [], doSteps: doStepsProp = [], doFiles = [], meId = null, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; notes?: TaskNote[]; doOrders?: DoOrder[]; doSteps?: DoStep[]; doFiles?: DoFile[]; meId?: string | null; adminEmail: string; isAdmin: boolean }) {
   const router = useRouter();
   const [doSteps, setDoSteps] = useState<DoStep[]>(doStepsProp);
   useEffect(() => { setDoSteps(doStepsProp); }, [doStepsProp]);
@@ -316,7 +320,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
             onCycle={doCycle} onSetPriority={doSetPriority} notesByTask={notesByTask} onAddNote={doAddNote} onDeleteNote={doDeleteNote} meId={meId} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} onEdit={(t: Task) => setEditTask(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)} canRemove={isAdmin && !selected.is_admin && selected.id !== meId} onRemove={() => setRemoveEmp(selected)}
             onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar}
-            doOrders={doOrders} employees={employees} stepsByOrder={stepsByOrder} onToggleStep={doToggleStep} />
+            doOrders={doOrders} doFiles={doFiles} employees={employees} stepsByOrder={stepsByOrder} onToggleStep={doToggleStep} />
         ) : (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
@@ -436,7 +440,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   );
 }
 
-function Detail({ emp, tasks, doOrders = [], employees = [], stepsByOrder = {}, onToggleStep, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
+function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], stepsByOrder = {}, onToggleStep, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort((a, b) => {
     // 已完成的排到最后；其余：紧急优先 → 有时间的按时间 → 无时间的在后
@@ -587,7 +591,7 @@ function Detail({ emp, tasks, doOrders = [], employees = [], stepsByOrder = {}, 
         </>
       )}
       </section>
-      <DoColumn emp={emp} orders={doOrders} employees={employees} stepsByOrder={stepsByOrder} onToggle={onToggleStep} />
+      <DoColumn emp={emp} orders={doOrders} files={doFiles} employees={employees} stepsByOrder={stepsByOrder} onToggle={onToggleStep} />
       </div>
 
       {confirmDone && (
@@ -607,13 +611,37 @@ function Detail({ emp, tasks, doOrders = [], employees = [], stepsByOrder = {}, 
   );
 }
 
-function DoColumn({ emp, orders: allOrders, employees, stepsByOrder, onToggle }: { emp: Employee; orders: DoOrder[]; employees: Employee[]; stepsByOrder: Record<string, DoStep[]>; onToggle: (s: DoStep) => void }) {
+function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder, onToggle }: { emp: Employee; orders: DoOrder[]; files?: DoFile[]; employees: Employee[]; stepsByOrder: Record<string, DoStep[]>; onToggle: (s: DoStep) => void }) {
   const [doneOpen, setDoneOpen] = useState(false);
   // 管理员 / 经理默认看全部 DO，可切换只看当前员工的
   const [onlyEmp, setOnlyEmp] = useState(false);
   const empName: Record<string, string> = useMemo(() => Object.fromEntries(employees.map((e) => [e.id, e.name])), [employees]);
   const empCount = allOrders.filter((o) => o.assignee_id === emp.id).length;
   const orders = onlyEmp ? allOrders.filter((o) => o.assignee_id === emp.id) : allOrders;
+  // 附件：私有桶，图片用 1 小时签名链接做缩略图；点击用 10 分钟签名链接打开
+  const sb = useMemo(() => createClient(), []);
+  const filesOf = useMemo(() => {
+    const m: Record<string, DoFile[]> = {};
+    files.forEach((f) => { (m[f.order_id] ||= []).push(f); });
+    return m;
+  }, [files]);
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const need = files.filter((f) => isImgFile(f) && !thumbs[f.path]).map((f) => f.path);
+    if (!need.length) return;
+    let alive = true;
+    sb.storage.from(DO_BUCKET).createSignedUrls(need, 3600).then(({ data }: any) => {
+      if (!alive || !data) return;
+      setThumbs((prev) => { const n = { ...prev }; data.forEach((d: any) => { if (d.signedUrl && d.path) n[d.path] = d.signedUrl; }); return n; });
+    });
+    return () => { alive = false; };
+  }, [files, sb]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openFile = async (f: DoFile) => {
+    const w = window.open("", "_blank"); // 先同步开窗口，避免手机浏览器拦截
+    const { data, error } = await sb.storage.from(DO_BUCKET).createSignedUrl(f.path, 600);
+    if (error || !data?.signedUrl) { w?.close(); alert("打开失败"); return; }
+    if (w) w.location.href = data.signedUrl; else window.location.href = data.signedUrl;
+  };
   const isDone = (o: DoOrder) => { const l = stepsByOrder[o.id] ?? []; return l.length > 0 && l.every((s) => s.done_at); };
   const active = orders.filter((o) => !isDone(o));
   const done = orders.filter(isDone).sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
@@ -649,6 +677,28 @@ function DoColumn({ emp, orders: allOrders, employees, stepsByOrder, onToggle }:
             );
           })}
         </div>
+        {(filesOf[o.id] ?? []).length > 0 && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #e2e8f0" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>📎 附件 {(filesOf[o.id] ?? []).length}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {(filesOf[o.id] ?? []).map((f) => (
+                <button key={f.id} onClick={() => openFile(f)} title={`${f.name}\n${f.uploaded_by_name ?? ""} ${fmtT(f.created_at)}`}
+                  style={{ width: 60, height: 60, padding: 0, borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", overflow: "hidden", cursor: "pointer", flex: "none" }}>
+                  {isImgFile(f)
+                    ? (thumbs[f.path]
+                        ? <img src={thumbs[f.path]} alt={f.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                        : <span style={{ fontSize: 20 }}>🖼</span>)
+                    : (
+                      <span style={{ display: "flex", flexDirection: "column", height: "100%", alignItems: "center", justifyContent: "center", gap: 2, padding: "0 4px", background: "#fef2f2" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#dc2626" }}>PDF</span>
+                        <span style={{ fontSize: 9, color: "#64748b", width: "100%", textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</span>
+                      </span>
+                    )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
