@@ -116,14 +116,14 @@ async function api(body: any) {
   return res.ok;
 }
 // 员工账号管理接口，返回 {ok, error?, created?}
-async function empApi(body: any): Promise<{ ok: boolean; error?: string; created?: boolean }> {
+async function empApi(body: any): Promise<{ ok: boolean; error?: string; created?: boolean; warning?: string }> {
   const res = await fetch("/api/employees", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, error: data?.error, created: data?.created };
+  return { ok: res.ok, error: data?.error, created: data?.created, warning: data?.warning };
 }
 
 export default function AdminBoard({ employees, tasks: tasksProp, notes: notesProp = [], meId = null, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; notes?: TaskNote[]; meId?: string | null; adminEmail: string; isAdmin: boolean }) {
@@ -147,6 +147,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   const [toast, setToast] = useState<string | null>(null);
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 1800); };
   const [credsFor, setCredsFor] = useState<Employee | null>(null);
+  const [removeEmp, setRemoveEmp] = useState<Employee | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
 
@@ -227,6 +228,18 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
     if (r.ok) { setAddOpen(false); showToast("已添加员工"); router.refresh(); }
     else { showToast(r.error || "添加失败"); }
   };
+  const doDeleteEmployee = async (emp: Employee) => {
+    setBusy(true);
+    const r = await empApi({ action: "deleteEmployee", employee_id: emp.id });
+    setBusy(false);
+    if (r.ok) {
+      setRemoveEmp(null); setSelectedId(null);
+      showToast(r.warning || `已删除员工 ${emp.name}`);
+      router.refresh();
+    } else {
+      showToast(r.error || "删除失败");
+    }
+  };
   const doDelete = async (task: Task) => {
     setConfirmDelete(null);
     await api({ action: "delete", task_id: task.id });
@@ -278,7 +291,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
       <main className="ab-main" style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
         {selected ? (
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
-            onCycle={doCycle} onSetPriority={doSetPriority} notesByTask={notesByTask} onAddNote={doAddNote} onDeleteNote={doDeleteNote} meId={meId} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} onEdit={(t: Task) => setEditTask(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)}
+            onCycle={doCycle} onSetPriority={doSetPriority} notesByTask={notesByTask} onAddNote={doAddNote} onDeleteNote={doDeleteNote} meId={meId} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} onEdit={(t: Task) => setEditTask(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)} canRemove={isAdmin && !selected.is_admin && selected.id !== meId} onRemove={() => setRemoveEmp(selected)}
             onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar} />
         ) : (
           <>
@@ -373,12 +386,27 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
       )}
       {credsFor && <CredentialsModal emp={credsFor} busy={busy} onClose={() => setCredsFor(null)} onSave={doSetCredentials} />}
       {addOpen && <AddEmployeeModal onClose={() => setAddOpen(false)} onSave={doAddEmployee} />}
+      {removeEmp && (
+        <div style={overlay} onClick={() => !busy && setRemoveEmp(null)}>
+          <div style={modal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>删除员工</h3>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: "12px 0 8px" }}>{removeEmp.name}{removeEmp.email ? ` · ${removeEmp.email}` : ""}</p>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 20px", lineHeight: 1.6 }}>
+              将同时删除 TA 名下的 <b style={{ color: "#dc2626" }}>{tasksOf(removeEmp.id).length}</b> 条任务和登录账号，TA 将无法再登录。此操作不可撤销。
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button disabled={busy} onClick={() => setRemoveEmp(null)} style={btnGhost}>取消</button>
+              <button disabled={busy} onClick={() => doDeleteEmployee(removeEmp)} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 14, fontWeight: 500, cursor: "pointer", opacity: busy ? 0.5 : 1 }}>{busy ? "删除中…" : "确认删除"}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {editTask && <EditTaskModal task={editTask} employees={employees} onClose={() => setEditTask(null)} onSave={doEditTask} />}
     </div>
   );
 }
 
-function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount }: any) {
+function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort((a, b) => {
     // 已完成的排到最后；其余：紧急优先 → 有时间的按时间 → 无时间的在后
@@ -479,6 +507,11 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
             {isAdmin && !emp.is_admin && (
               <button onClick={() => onManageAccount(emp)} style={{ fontSize: 13, padding: "4px 12px", borderRadius: 999, border: "1px solid #cbd5e1", background: "#fff", color: "#475569", cursor: "pointer" }}>
                 {emp.user_id ? "账号设置" : "开通登录"}
+              </button>
+            )}
+            {canRemove && (
+              <button onClick={onRemove} style={{ fontSize: 13, padding: "4px 12px", borderRadius: 999, border: "1px solid #fecaca", background: "#fff", color: "#dc2626", cursor: "pointer" }}>
+                删除员工
               </button>
             )}
           </div>

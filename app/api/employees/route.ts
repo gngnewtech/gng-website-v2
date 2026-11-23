@@ -1,5 +1,5 @@
 // 放置位置：app/api/employees/route.ts
-// 员工账号管理：设置/修改登录邮箱与密码、重设密码。
+// 员工账号管理：添加 / 删除员工，设置/修改登录邮箱与密码、重设密码。
 // 仅管理员可用；可管理普通员工和经理的账号（不能动管理员账号）。
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -118,6 +118,55 @@ export async function POST(req: Request) {
       // 档案建失败，回滚刚建的登录账号，避免留下孤立账号
       if (newUserId) await admin.auth.admin.deleteUser(newUserId);
       return NextResponse.json({ error: ie.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "deleteEmployee") {
+    const { employee_id } = body;
+    if (!employee_id) return NextResponse.json({ error: "缺少员工" }, { status: 400 });
+    if (employee_id === me.id) return NextResponse.json({ error: "不能删除自己" }, { status: 400 });
+
+    let admin;
+    try { admin = createAdminClient(); }
+    catch (err: any) { return NextResponse.json({ error: err.message }, { status: 500 }); }
+
+    const { data: target, error: te } = await admin
+      .from("employees")
+      .select("id, user_id, is_admin")
+      .eq("id", employee_id)
+      .maybeSingle();
+    if (te) return NextResponse.json({ error: te.message }, { status: 500 });
+    if (!target) return NextResponse.json({ error: "员工不存在" }, { status: 404 });
+    if (target.is_admin) return NextResponse.json({ error: "不能删除管理员" }, { status: 403 });
+
+    // 名下还有 DO 单时先拦下，避免 DO 记录丢失
+    const { count: doCount, error: de } = await admin
+      .from("do_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("assignee_id", employee_id);
+    if (de) return NextResponse.json({ error: de.message }, { status: 500 });
+    if ((doCount ?? 0) > 0)
+      return NextResponse.json({ error: `该员工名下还有 ${doCount} 张 DO 单，请先转交给其他人` }, { status: 409 });
+
+    // 他派给别人的任务保留，只清掉「派任务人」
+    const { error: c1 } = await admin.from("tasks").update({ created_by: null }).eq("created_by", employee_id);
+    if (c1) return NextResponse.json({ error: c1.message }, { status: 500 });
+    const { error: c2 } = await admin.from("tasks").update({ assigned_by: null }).eq("assigned_by", employee_id);
+    if (c2) return NextResponse.json({ error: c2.message }, { status: 500 });
+
+    // 删除他名下的任务（其下子任务会随之级联删除）
+    const { error: c3 } = await admin.from("tasks").delete().eq("assignee_id", employee_id);
+    if (c3) return NextResponse.json({ error: c3.message }, { status: 500 });
+
+    // 删除员工档案
+    const { error: c4 } = await admin.from("employees").delete().eq("id", employee_id);
+    if (c4) return NextResponse.json({ error: c4.message }, { status: 500 });
+
+    // 删除登录账号
+    if (target.user_id) {
+      const { error: c5 } = await admin.auth.admin.deleteUser(target.user_id);
+      if (c5) return NextResponse.json({ ok: true, warning: "员工已删除，但登录账号删除失败：" + c5.message });
     }
     return NextResponse.json({ ok: true });
   }
