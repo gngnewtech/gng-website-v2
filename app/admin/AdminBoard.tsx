@@ -8,6 +8,8 @@ const NOTE_LABELS = { placeholder: "写进一步的进展或消息…", add: "�
 
 type TaskState = "todo" | "doing" | "done";
 type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null; recur?: Recur | null };
+type DoOrder = { id: string; title: string; do_no: string | null; invoice_no: string | null; assignee_id: string; created_at: string; done_at: string | null };
+type DoStep = { id: string; order_id: string; step_no: number; name: string; done_at: string | null; done_by_name: string | null };
 type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean; is_admin?: boolean; is_manager?: boolean; user_id?: string | null; username?: string | null };
 
 function stats(tasks: Task[]) {
@@ -126,8 +128,26 @@ async function empApi(body: any): Promise<{ ok: boolean; error?: string; created
   return { ok: res.ok, error: data?.error, created: data?.created, warning: data?.warning };
 }
 
-export default function AdminBoard({ employees, tasks: tasksProp, notes: notesProp = [], meId = null, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; notes?: TaskNote[]; meId?: string | null; adminEmail: string; isAdmin: boolean }) {
+export default function AdminBoard({ employees, tasks: tasksProp, notes: notesProp = [], doOrders = [], doSteps: doStepsProp = [], meId = null, adminEmail, isAdmin }: { employees: Employee[]; tasks: Task[]; notes?: TaskNote[]; doOrders?: DoOrder[]; doSteps?: DoStep[]; meId?: string | null; adminEmail: string; isAdmin: boolean }) {
   const router = useRouter();
+  const [doSteps, setDoSteps] = useState<DoStep[]>(doStepsProp);
+  useEffect(() => { setDoSteps(doStepsProp); }, [doStepsProp]);
+  const stepsByOrder = useMemo(() => {
+    const m: Record<string, DoStep[]> = {};
+    doSteps.forEach((s) => { (m[s.order_id] ||= []).push(s); });
+    Object.values(m).forEach((l) => l.sort((a, b) => a.step_no - b.step_no));
+    return m;
+  }, [doSteps]);
+  const myName = employees.find((e) => e.id === meId)?.name ?? null;
+  const doToggleStep = async (st: DoStep) => {
+    const next = !st.done_at;
+    if (!next && !confirm(`取消「${st.name}」这一步？`)) return;
+    const backup = doSteps;
+    setDoSteps((prev) => prev.map((x) => (x.id === st.id ? { ...x, done_at: next ? new Date().toISOString() : null, done_by_name: next ? myName : null } : x)));
+    const res = await fetch("/api/do", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "toggleStep", step_id: st.id, done: next }) });
+    if (!res.ok) { setDoSteps(backup); const d = await res.json().catch(() => ({} as any)); showToast(d?.error || "操作失败"); return; }
+    router.refresh();
+  };
   const [tasks, setTasks] = useState<Task[]>(tasksProp);
   useEffect(() => { setTasks(tasksProp); }, [tasksProp]);
   const [notes, setNotes] = useState<TaskNote[]>(notesProp);
@@ -268,6 +288,8 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: 'system-ui,-apple-system,"PingFang SC",sans-serif', color: "#1e293b" }}>
       <style>{`
+        .ab-cols { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; align-items: start; }
+        @media (max-width: 1100px) { .ab-cols { grid-template-columns: minmax(0, 1fr); } }
         @media (max-width: 600px) {
           .ab-head { padding: 0 12px !important; }
           .ab-brand { font-size: 11px !important; letter-spacing: .06em !important; }
@@ -278,7 +300,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
         }
       `}</style>
       <header style={{ background: "#0f172a", color: "#f1f5f9", position: "sticky", top: 0, zIndex: 10 }}>
-        <div className="ab-head" style={{ maxWidth: 960, margin: "0 auto", padding: "0 24px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="ab-head" style={{ maxWidth: selected ? 1360 : 960, margin: "0 auto", padding: "0 24px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span className="ab-brand" style={{ color: "#fbbf24", fontFamily: "ui-monospace,monospace", letterSpacing: ".16em", fontSize: 13, whiteSpace: "nowrap" }}>● ADMIN.GNGNT.COM</span>
           <div className="ab-head-right" style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 14 }}>
             <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 999, border: "1px solid #334155", color: "#fbbf24", whiteSpace: "nowrap", flex: "none" }}>{isAdmin ? "管理员" : "经理"}</span>
@@ -289,11 +311,12 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
         </div>
       </header>
 
-      <main className="ab-main" style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
+      <main className="ab-main" style={{ maxWidth: selected ? 1360 : 960, margin: "0 auto", padding: 24 }}>
         {selected ? (
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
             onCycle={doCycle} onSetPriority={doSetPriority} notesByTask={notesByTask} onAddNote={doAddNote} onDeleteNote={doDeleteNote} meId={meId} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} onEdit={(t: Task) => setEditTask(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)} canRemove={isAdmin && !selected.is_admin && selected.id !== meId} onRemove={() => setRemoveEmp(selected)}
-            onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar} />
+            onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar}
+            doOrders={doOrders.filter((o) => o.assignee_id === selected.id)} stepsByOrder={stepsByOrder} onToggleStep={doToggleStep} />
         ) : (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
@@ -413,7 +436,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   );
 }
 
-function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
+function Detail({ emp, tasks, doOrders = [], stepsByOrder = {}, onToggleStep, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort((a, b) => {
     // 已完成的排到最后；其余：紧急优先 → 有时间的按时间 → 无时间的在后
@@ -530,10 +553,11 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
           <div style={{ fontSize: 12, color: "#94a3b8" }}>完成 {s.done}/{s.total}</div>
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "24px 0 12px" }}>
-        <h4 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: 0 }}>任务清单</h4>
+      <div className="ab-cols" style={{ marginTop: 24 }}>
+      <section style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 12px" }}>
+        <h4 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: 0 }}>每日任务</h4>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <a href="/admin/do" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>DO 流程</a>
           <button onClick={onAssignHere} style={btnPrimary}>+ 给 {emp.name} 派任务</button>
         </div>
       </div>
@@ -562,6 +586,9 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
           )}
         </>
       )}
+      </section>
+      <DoColumn orders={doOrders} stepsByOrder={stepsByOrder} onToggle={onToggleStep} />
+      </div>
 
       {confirmDone && (
         <div style={overlay} onClick={() => setConfirmDone(null)}>
@@ -579,6 +606,73 @@ function Detail({ emp, tasks, onBack, onCycle, onSetPriority, notesByTask, onAdd
     </div>
   );
 }
+
+function DoColumn({ orders, stepsByOrder, onToggle }: { orders: DoOrder[]; stepsByOrder: Record<string, DoStep[]>; onToggle: (s: DoStep) => void }) {
+  const [doneOpen, setDoneOpen] = useState(false);
+  const isDone = (o: DoOrder) => { const l = stepsByOrder[o.id] ?? []; return l.length > 0 && l.every((s) => s.done_at); };
+  const active = orders.filter((o) => !isDone(o));
+  const done = orders.filter(isDone).sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
+  const fmtT = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+  const card = (o: DoOrder) => {
+    const steps = stepsByOrder[o.id] ?? [];
+    const nextIdx = steps.findIndex((s) => !s.done_at);
+    const doneCount = steps.filter((s) => s.done_at).length;
+    return (
+      <div key={o.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ flex: 1, minWidth: 120, fontWeight: 600, color: "#0f172a", wordBreak: "break-word" }}>{o.title}</span>
+          <span style={{ fontSize: 12, color: "#64748b", flex: "none" }}>{doneCount}/{steps.length}</span>
+        </div>
+        {(o.do_no || o.invoice_no) && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+            {o.do_no && <span style={doChip}>DO {o.do_no}</span>}
+            {o.invoice_no && <span style={doChip}>发票 {o.invoice_no}</span>}
+          </div>
+        )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6, marginTop: 10 }}>
+          {steps.map((s, i) => {
+            const on = !!s.done_at; const isNext = i === nextIdx;
+            return (
+              <button key={s.id} onClick={() => onToggle(s)} title={on ? `${s.done_by_name ?? ""} ${fmtT(s.done_at!)}` : "点击标记完成"}
+                style={{ padding: "6px 4px", borderRadius: 6, cursor: "pointer", fontSize: 12, lineHeight: 1.3, textAlign: "center", minWidth: 0,
+                  border: `${isNext ? 2 : 1}px solid ${on ? "#10b981" : isNext ? "#2563eb" : "#e2e8f0"}`,
+                  background: on ? "#ecfdf5" : "#fff", color: on ? "#047857" : isNext ? "#1d4ed8" : "#94a3b8", fontWeight: on || isNext ? 600 : 400 }}>
+                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{on ? "✓ " : ""}{s.name}</div>
+                {on && <div style={{ fontSize: 10, fontWeight: 400, color: "#64748b", marginTop: 2, whiteSpace: "nowrap" }}>{fmtT(s.done_at!)}</div>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <section style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 12px", minHeight: 38 }}>
+        <h4 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: 0 }}>DO 单</h4>
+        <a href="/admin/do" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>DO 流程 →</a>
+      </div>
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>该员工负责的 DO · 点格子勾选步骤 · 蓝框是下一步</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {active.length === 0
+          ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 24, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>没有进行中的 DO</div>
+          : active.map(card)}
+      </div>
+      {done.length > 0 && (
+        <div style={{ marginTop: 16, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+          <button onClick={() => setDoneOpen((v) => !v)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+            <span style={{ fontSize: 12, color: "#64748b", width: 12, display: "inline-block", transform: doneOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▶</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#047857" }}>已完成</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "1px 8px" }}>{done.length}</span>
+            <span style={{ marginLeft: "auto", fontSize: 12, color: "#94a3b8" }}>{doneOpen ? "收起" : "展开"}</span>
+          </button>
+          {doneOpen && <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 12px 12px" }}>{done.map(card)}</div>}
+        </div>
+      )}
+    </section>
+  );
+}
+const doChip: React.CSSProperties = { fontSize: 12, padding: "2px 9px", borderRadius: 999, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8", whiteSpace: "nowrap" };
 
 function AssignModal({ employees, defaultId, busy, canPrivate, onClose, onAssign }: any) {
   const [empId, setEmpId] = useState(defaultId ?? employees[0]?.id);

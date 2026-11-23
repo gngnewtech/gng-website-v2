@@ -34,11 +34,27 @@ export default async function AdminPage() {
     .select("id, task_id, author_id, author_name, body, created_at")
     .order("created_at", { ascending: true });
 
+  // DO 单 + 步骤（详情页右栏显示该员工负责的 DO）
+  const { data: doOrders } = await (supabase as any)
+    .from("do_orders")
+    .select("id, title, do_no, invoice_no, assignee_id, created_at, done_at")
+    .order("created_at", { ascending: false });
+  const doIds = (doOrders ?? []).map((o: any) => o.id);
+  const { data: doSteps } = doIds.length
+    ? await (supabase as any)
+        .from("do_steps")
+        .select("id, order_id, step_no, name, done_at, done_by_name")
+        .in("order_id", doIds)
+        .order("step_no", { ascending: true })
+    : { data: [] };
+
   return (
     <AdminBoard
       employees={employees ?? []}
       tasks={tasks ?? []}
       notes={notes ?? []}
+      doOrders={doOrders ?? []}
+      doSteps={doSteps ?? []}
       meId={me?.id ?? null}
       adminEmail={user.email ?? ""}
       isAdmin={!!me?.is_admin}
