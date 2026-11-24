@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { rollOverdueTasks } from "@/lib/rollOverdue";
 import AdminBoard from "./AdminBoard";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,9 @@ export default async function AdminPage() {
     .eq("user_id", user.id)
     .maybeSingle();
   if (!me?.is_admin && !me?.is_manager) redirect("/employee");
+
+  // 过期未完成的任务，日期自动改为今天
+  await rollOverdueTasks();
 
   // 读员工和任务（经理看不到的私密任务由数据库 RLS 自动过滤）
   const { data: employees } = await supabase
