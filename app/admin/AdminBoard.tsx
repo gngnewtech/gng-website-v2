@@ -225,6 +225,8 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
     const data = await res.json().catch(() => ({} as any));
     if (!res.ok || !data?.note) { showToast(data?.error || "保存失败"); return false; }
     setNotes((prev) => [...prev, data.note]);
+    // 跟进后日期自动顺延到明天
+    if (data.start_at) { setTasks((prev) => prev.map((x) => (x.id === taskId ? { ...x, start_at: data.start_at } : x))); router.refresh(); }
     return true;
   };
   const doDeleteNote = async (note: TaskNote) => {

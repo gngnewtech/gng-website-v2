@@ -110,7 +110,28 @@ export async function POST(req: Request) {
       .select("id, task_id, author_id, author_name, body, created_at")
       .single();
     if (e) return NextResponse.json({ error: e.message }, { status: 500 });
-    return NextResponse.json({ ok: true, note: data });
+    // 有了跟进：任务日期自动顺延到明天（迪拜时间），保留原来的钟点
+    // 只处理有日期、未完成、日期是今天或已过期的任务；以后日期的不动
+    let start_at: string | null = null;
+    const { data: t } = await (supabase as any)
+      .from("tasks")
+      .select("start_at, state, recur, recur_anchor")
+      .eq("id", task_id)
+      .maybeSingle();
+    if (t?.start_at && t.state !== "done") {
+      const DAY = 86400000, DUBAI = 4 * 3600000; // 迪拜 UTC+4，无夏令时
+      const dayNo = (ms: number) => Math.floor((ms + DUBAI) / DAY);
+      const oldMs = new Date(t.start_at).getTime();
+      const shift = dayNo(Date.now()) + 1 - dayNo(oldMs);
+      if (shift > 0) {
+        const patch: any = { start_at: new Date(oldMs + shift * DAY).toISOString() };
+        // 重复任务：记住原来的基准日，顺延不打乱每周/每月的规律
+        if (t.recur && !t.recur_anchor) patch.recur_anchor = new Date(oldMs + DUBAI).toISOString().slice(0, 10);
+        const { data: up } = await (supabase as any).from("tasks").update(patch).eq("id", task_id).select("start_at");
+        if (up && up.length) start_at = up[0].start_at;
+      }
+    }
+    return NextResponse.json({ ok: true, note: data, start_at });
   }
 
   if (action === "deleteNote") {
