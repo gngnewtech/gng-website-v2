@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 const NOTE_LABELS = { placeholder: "写进一步的进展或消息…", add: "添加跟进", adding: "保存中…", cancel: "取消", delete: "删除", confirmDelete: "删除这条跟进？", unknownAuthor: "（原备注）" };
 
 type TaskState = "todo" | "doing" | "done";
-type Task = { id: string; assignee_id: string; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null; recur?: Recur | null };
+type Task = { id: string; assignee_id: string; parent_id?: string | null; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null; recur?: Recur | null };
 type DoOrder = { id: string; title: string; do_no: string | null; invoice_no: string | null; assignee_id: string; created_at: string; done_at: string | null };
 type DoFile = { id: string; order_id: string; path: string; name: string; mime: string | null; uploaded_by_name: string | null; created_at: string };
 const DO_BUCKET = "do-files";
@@ -165,7 +165,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignFor, setAssignFor] = useState<string | undefined>(undefined);
-  const [transfer, setTransfer] = useState<Task | null>(null);
+  const [subFor, setSubFor] = useState<Task | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -194,10 +194,14 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
     await api({ action: "assign", assignee_id: empId, name, important, urgent, is_private: isAdmin && isPrivate, start_at: day ? new Date(`${day}T00:00`).toISOString() : null, recur: recur || null });
     setBusy(false); setAssignOpen(false); router.refresh();
   };
-  const doTransfer = async (taskId: string, toId: string) => {
+  // 子任务：原任务留在原负责人名下，给选中的同事新建一条子任务（parent_id = 原任务）
+  const doSubtask = async (parent: Task, toId: string, name: string, startDay: string, important: boolean, urgent: boolean) => {
     setBusy(true);
-    await api({ action: "transfer", task_id: taskId, to_assignee_id: toId });
-    setBusy(false); setTransfer(null); router.refresh();
+    const ok = await api({ action: "assign", parent_id: parent.id, assignee_id: toId, name, important, urgent, is_private: isAdmin && !!parent.is_private, start_at: startDay ? new Date(`${startDay}T00:00`).toISOString() : null });
+    setBusy(false);
+    if (ok) { setSubFor(null); showToast(`已分派子任务给 ${employees.find((e) => e.id === toId)?.name ?? ""}`); }
+    else showToast("分派失败");
+    router.refresh();
   };
   const doCycle = async (task: Task) => {
     // 已完成再点 → 复制一条新的「待开始」任务给同一员工，原任务保持已完成
@@ -269,7 +273,11 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   };
   const doDelete = async (task: Task) => {
     setConfirmDelete(null);
-    await api({ action: "delete", task_id: task.id });
+    // 先删子孙任务（深层在前），再删自己
+    const ids: string[] = [];
+    const walk = (pid: string) => tasks.forEach((x) => { if (x.parent_id === pid) { walk(x.id); ids.push(x.id); } });
+    walk(task.id);
+    for (const id of [...ids, task.id]) await api({ action: "delete", task_id: id });
     router.refresh();
   };
   const doEditTask = async (original: Task, name: string, assigneeId: string, important: boolean, urgent: boolean) => {
@@ -321,7 +329,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
         {selected ? (
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
             onCycle={doCycle} onSetPriority={doSetPriority} notesByTask={notesByTask} onAddNote={doAddNote} onDeleteNote={doDeleteNote} meId={meId} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} onEdit={(t: Task) => setEditTask(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)} canRemove={isAdmin && !selected.is_admin && selected.id !== meId} onRemove={() => setRemoveEmp(selected)}
-            onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onTransfer={(t) => setTransfer(t)} bar={bar}
+            onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onSubtask={(t: Task) => setSubFor(t)} allTasks={tasks} bar={bar}
             doOrders={doOrders} doFiles={doFiles} employees={employees} stepsByOrder={stepsByOrder} onToggleStep={doToggleStep} />
         ) : (
           <>
@@ -398,12 +406,12 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
       </main>
 
       {assignOpen && <AssignModal employees={employees} defaultId={assignFor} busy={busy} canPrivate={isAdmin} onClose={() => setAssignOpen(false)} onAssign={doAssign} />}
-      {transfer && <TransferModal task={transfer} employees={employees} busy={busy} onClose={() => setTransfer(null)} onConfirm={doTransfer} />}
+      {subFor && <SubtaskModal task={subFor} employees={employees} busy={busy} onClose={() => setSubFor(null)} onConfirm={doSubtask} />}
       {confirmDelete && (
         <div style={overlay} onClick={() => setConfirmDelete(null)}>
           <div style={modal} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>确认删除</h3>
-            <p style={{ fontSize: 14, color: "#64748b", margin: "10px 0 4px" }}>确定删除这条任务吗？此操作不可撤销。</p>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "10px 0 4px" }}>确定删除这条任务吗？（子任务会一起删除）此操作不可撤销。</p>
             <p style={{ fontSize: 15, fontWeight: 600, margin: "0 0 20px" }}>{confirmDelete.name}</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button onClick={() => setConfirmDelete(null)} style={btnGhost}>取消</button>
@@ -442,7 +450,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   );
 }
 
-function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], stepsByOrder = {}, onToggleStep, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onTransfer, bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
+function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], stepsByOrder = {}, onToggleStep, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onSubtask, allTasks = [], bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort((a, b) => {
     // 已完成的排到最后；其余：紧急优先 → 有时间的按时间 → 无时间的在后
@@ -483,10 +491,13 @@ function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], steps
   const activeTasks = sorted.filter((t: Task) => t.state !== "done");
   const doneTasks = sorted.filter((t: Task) => t.state === "done");
   const [doneOpen, setDoneOpen] = useState(false);
+  const taskName: Record<string, string> = useMemo(() => Object.fromEntries(allTasks.map((x: Task) => [x.id, x.name])), [allTasks]);
+  const empName: Record<string, string> = useMemo(() => Object.fromEntries(employees.map((e: Employee) => [e.id, e.name])), [employees]);
   const renderRow = (t: Task) => {
     const editing = editingNote === t.id;
     const tNotes: TaskNote[] = notesByTask[t.id] ?? [];
     const today = isToday(t);
+    const children: Task[] = allTasks.filter((x: Task) => x.parent_id === t.id);
     return (
       <div key={t.id} style={today
         ? { background: "#fffbeb", border: "2px solid #f59e0b", borderLeft: "6px solid #f59e0b", borderRadius: 8, overflow: "hidden", boxShadow: "0 4px 14px rgba(245,158,11,.25)" }
@@ -500,11 +511,26 @@ function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], steps
           <span className="ab-tname" style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : today ? "#0f172a" : "#334155", fontWeight: today ? 700 : 400 }}>{t.name}</span>
           <button onClick={() => setEditingNote(editing ? null : t.id)} style={tNotes.length ? { ...actBtn("#fff", "#0f172a"), background: "#0f172a" } : actBtn()}>{tNotes.length ? "跟进 ●" : "跟进"}</button>
           <button onClick={() => onEdit(t)} style={actBtn()}>编辑</button>
-          <button onClick={() => onTransfer(t)} style={actBtn("#2563eb", "#bfdbfe")}>转交</button>
+          <button onClick={() => onSubtask(t)} style={actBtn("#2563eb", "#bfdbfe")}>子任务</button>
           <button onClick={() => onDelete(t)} style={actBtn("#dc2626", "#fecaca")}>删除</button>
           <button onClick={() => clickStatus(t)} style={{ background: TASK_TONE[t.state].bg, color: TASK_TONE[t.state].color, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, width: 60, flex: "none" }}>{TASK_LABEL[t.state]}</button>
           {flash && flash.id === t.id && <span style={{ fontSize: 12, fontWeight: 600, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap", flex: "none" }}>✓ {flash.msg}</span>}
         </div>
+        {(t.parent_id || children.length > 0) && (
+          <div style={{ padding: "0 16px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
+            {t.parent_id && (
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>↳ {taskName[t.parent_id] ? `属于「${taskName[t.parent_id]}」` : "子任务"}</div>
+            )}
+            {children.map((c: Task) => (
+              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, flexWrap: "wrap" }}>
+                <span style={{ color: "#94a3b8" }}>↳</span>
+                <span style={{ color: c.state === "done" ? "#94a3b8" : "#334155", textDecoration: c.state === "done" ? "line-through" : "none", wordBreak: "break-word" }}>{c.name}</span>
+                <span style={{ fontSize: 12, color: "#2563eb", background: "#eff6ff", borderRadius: 999, padding: "1px 8px", whiteSpace: "nowrap" }}>{empName[c.assignee_id] ?? "?"}</span>
+                <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, whiteSpace: "nowrap", color: TASK_TONE[c.state].color, background: TASK_TONE[c.state].bg }}>{TASK_LABEL[c.state]}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <NoteThread
           notes={tNotes}
           editing={editing}
@@ -966,20 +992,37 @@ function CredentialsModal({ emp, busy, onClose, onSave }: any) {
   );
 }
 
-function TransferModal({ task, employees, busy, onClose, onConfirm }: any) {
+function SubtaskModal({ task, employees, busy, onClose, onConfirm }: any) {
   const others = employees.filter((e: Employee) => e.id !== task.assignee_id);
-  const [toId, setToId] = useState(others[0]?.id);
+  const [toId, setToId] = useState(others[0]?.id ?? task.assignee_id);
+  const [name, setName] = useState("");
+  const [day, setDay] = useState(task.start_at ? dayKey(new Date(task.start_at)) : "");
+  const [important, setImportant] = useState(false);
+  const [urgent, setUrgent] = useState(false);
+  const canSave = !!name.trim() && !!toId;
   return (
     <div style={overlay} onClick={onClose}>
       <div style={modal} onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>转交任务</h3>
-        <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 16px" }}>「{task.name}」转交给：</p>
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>分派子任务</h3>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 16px", wordBreak: "break-word" }}>属于「{task.name}」（原任务保留不动）</p>
+        <label style={lbl}>子任务内容</label>
+        <textarea value={name} autoFocus onChange={(e) => setName(e.target.value)} rows={2} placeholder="写要对方做的事…" style={{ ...field, fontFamily: "inherit", resize: "vertical" }} />
+        <div style={{ height: 14 }} />
+        <label style={lbl}>分派给</label>
         <select value={toId} onChange={(e) => setToId(e.target.value)} style={field}>
-          {others.map((e: Employee) => <option key={e.id} value={e.id}>{e.name} · {e.role}</option>)}
+          {employees.map((e: Employee) => <option key={e.id} value={e.id}>{e.name}{e.role ? ` · ${e.role}` : ""}</option>)}
         </select>
+        <div style={{ height: 14 }} />
+        <label style={lbl}>日期（可留空）</label>
+        <input type="date" value={day} onChange={(e) => setDay(e.target.value)} style={field} />
+        <div style={{ height: 14 }} />
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => setImportant((v) => !v)} style={toggleStyle(important, "#1d4ed8")}>重要</button>
+          <button onClick={() => setUrgent((v) => !v)} style={toggleStyle(urgent, "#be123c")}>紧急</button>
+        </div>
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
-          <button disabled={busy} onClick={() => onConfirm(task.id, toId)} style={btnPrimary}>{busy ? "提交中…" : "确认转交"}</button>
+          <button disabled={busy || !canSave} onClick={() => onConfirm(task, toId, name.trim(), day, important, urgent)} style={{ ...btnPrimary, opacity: busy || !canSave ? 0.5 : 1 }}>{busy ? "提交中…" : "确认分派"}</button>
         </div>
       </div>
     </div>

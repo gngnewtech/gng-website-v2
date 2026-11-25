@@ -29,7 +29,7 @@ export default async function AdminPage() {
 
   const { data: tasks } = await supabase
     .from("tasks")
-    .select("id, assignee_id, name, state, important, urgent, note, is_private, start_at, recur, created_at")
+    .select("id, assignee_id, parent_id, name, state, important, urgent, note, is_private, start_at, recur, created_at")
     .order("created_at", { ascending: true });
 
   // 跟进记录（多条；经理看不到的任务的跟进由 RLS 过滤）
