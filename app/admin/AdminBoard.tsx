@@ -314,7 +314,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: 'system-ui,-apple-system,"PingFang SC",sans-serif', color: "#1e293b" }}>
       <style>{`
-        .ab-cols { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; align-items: start; }
+        .ab-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
         @media (max-width: 1100px) { .ab-cols { grid-template-columns: minmax(0, 1fr); } }
         @media (max-width: 600px) {
           .ab-head { padding: 0 12px !important; }
