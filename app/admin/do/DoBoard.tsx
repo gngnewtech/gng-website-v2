@@ -102,6 +102,20 @@ const CSS = `
 
 const btnPrimary: React.CSSProperties = { background: "#0f172a", color: "#fff", border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
 const btnGhost: React.CSSProperties = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 12px", fontSize: 14, cursor: "pointer" };
+// DO 单号里的日期：DO-EL-HAOHU-261125-1 → 261125（2026-11-25），末尾 -1/-2 是当天序号
+// 排序键 "261125|0001|创建时间"；单号里没日期就用创建日期
+const doSortKey = (o: { title: string; do_no: string | null; created_at: string }) => {
+  const src = `${o.do_no ?? ""} ${o.title}`;
+  const m = src.match(/(?:^|\D)(\d{2})(\d{2})(\d{2})(?:-(\d+))?(?!\d)/);
+  const okDate = m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31;
+  const c = new Date(o.created_at);
+  const ymd = okDate ? `${m![1]}${m![2]}${m![3]}`
+    : `${String(c.getFullYear() % 100).padStart(2, "0")}${String(c.getMonth() + 1).padStart(2, "0")}${String(c.getDate()).padStart(2, "0")}`;
+  const seq = okDate && m![4] ? m![4].padStart(4, "0") : "0000";
+  return `${ymd}|${seq}|${o.created_at}`;
+};
+// 新日期在上；同一天序号大的在上
+const byDoDate = (a: { title: string; do_no: string | null; created_at: string }, b: { title: string; do_no: string | null; created_at: string }) => doSortKey(b).localeCompare(doSortKey(a));
 const actBtn = (color = "#334155", border = "#cbd5e1"): React.CSSProperties => ({ fontSize: 13, padding: "4px 12px", borderRadius: 6, border: `1px solid ${border}`, background: "#fff", color, cursor: "pointer", whiteSpace: "nowrap", flex: "none" });
 const field: React.CSSProperties = { width: "100%", padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none" };
 const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(15,23,42,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 };
@@ -214,9 +228,8 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
   // 已完成：7 步全勾，或最后一步「完成」已勾 → 跟已完成任务一样收到最下面
   const finishStep = (o: Order) => (stepsOf[o.id] ?? []).find((s) => s.name === "完成");
   const isDone = (o: Order) => { const l = stepsOf[o.id] ?? []; return l.length > 0 && (l.every((s) => s.done_at) || !!finishStep(o)?.done_at); };
-  const doneTime = (o: Order) => o.done_at ?? finishStep(o)?.done_at ?? "";
-  const active = visible.filter((o) => !isDone(o));
-  const done = visible.filter(isDone).sort((a, b) => doneTime(b).localeCompare(doneTime(a)));
+  const active = visible.filter((o) => !isDone(o)).sort(byDoDate);
+  const done = visible.filter(isDone).sort(byDoDate);
 
   const toggle = async (s: Step) => {
     const next = !s.done_at;

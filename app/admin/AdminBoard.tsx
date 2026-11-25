@@ -671,6 +671,20 @@ const DO_STEP_EN: Record<string, string> = {
   "采购": "Purchase", "入库": "Stock In", "付款": "Payment", "完成": "Done",
 };
 const doStepName = (name: string, lang: DoLang) => (lang === "en" ? DO_STEP_EN[name] ?? name : name);
+// DO 单号里的日期：DO-EL-HAOHU-261125-1 → 261125（2026-11-25），末尾 -1/-2 是当天序号
+// 排序键 "261125|0001|创建时间"；单号里没日期就用创建日期
+const doSortKey = (o: { title: string; do_no: string | null; created_at: string }) => {
+  const src = `${o.do_no ?? ""} ${o.title}`;
+  const m = src.match(/(?:^|\D)(\d{2})(\d{2})(\d{2})(?:-(\d+))?(?!\d)/);
+  const okDate = m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31;
+  const c = new Date(o.created_at);
+  const ymd = okDate ? `${m![1]}${m![2]}${m![3]}`
+    : `${String(c.getFullYear() % 100).padStart(2, "0")}${String(c.getMonth() + 1).padStart(2, "0")}${String(c.getDate()).padStart(2, "0")}`;
+  const seq = okDate && m![4] ? m![4].padStart(4, "0") : "0000";
+  return `${ymd}|${seq}|${o.created_at}`;
+};
+// 新日期在上；同一天序号大的在上
+const byDoDate = (a: { title: string; do_no: string | null; created_at: string }, b: { title: string; do_no: string | null; created_at: string }) => doSortKey(b).localeCompare(doSortKey(a));
 const DO_T = {
   zh: {
     title: "DO 单", flow: "DO 流程 →", all: "全部", only: (n: string) => `只看 ${n}`,
@@ -775,9 +789,8 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
   // 已完成：7 步全勾，或最后一步「完成」已勾 → 跟已完成任务一样收到最下面
   const finishStep = (o: DoOrder) => (stepsByOrder[o.id] ?? []).find((s) => s.name === "完成");
   const isDone = (o: DoOrder) => { const l = stepsByOrder[o.id] ?? []; return l.length > 0 && (l.every((s) => s.done_at) || !!finishStep(o)?.done_at); };
-  const doneTime = (o: DoOrder) => o.done_at ?? finishStep(o)?.done_at ?? "";
-  const active = orders.filter((o) => !isDone(o));
-  const done = orders.filter(isDone).sort((a, b) => doneTime(b).localeCompare(doneTime(a)));
+  const active = orders.filter((o) => !isDone(o)).sort(byDoDate);
+  const done = orders.filter(isDone).sort(byDoDate);
   const fmtT = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
   const card = (o: DoOrder) => {
     const steps = stepsByOrder[o.id] ?? [];
