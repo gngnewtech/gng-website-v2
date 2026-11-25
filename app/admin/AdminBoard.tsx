@@ -314,7 +314,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: 'system-ui,-apple-system,"PingFang SC",sans-serif', color: "#1e293b" }}>
       <style>{`
-        .ab-dosteps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+        .ab-dosteps { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
         @media (max-width: 600px) { .ab-dosteps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
         .ab-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
         @media (max-width: 1100px) { .ab-cols { grid-template-columns: minmax(0, 1fr); } }
@@ -668,7 +668,7 @@ function useDoLang(): DoLang {
 }
 const DO_STEP_EN: Record<string, string> = {
   "DO": "DO", "DO BACK": "DO BACK", "递交发票": "Submit Invoice", "收款": "Payment Received",
-  "采购": "Purchase", "付款": "Payment", "完成": "Done",
+  "采购": "Purchase", "入库": "Stock In", "付款": "Payment", "完成": "Done",
 };
 const doStepName = (name: string, lang: DoLang) => (lang === "en" ? DO_STEP_EN[name] ?? name : name);
 const DO_T = {
@@ -773,7 +773,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
     if (w) w.location.href = data.signedUrl; else window.location.href = data.signedUrl;
   };
   // 已完成：7 步全勾，或最后一步「完成」已勾 → 跟已完成任务一样收到最下面
-  const finishStep = (o: DoOrder) => (stepsByOrder[o.id] ?? []).find((s) => s.step_no === 7 || s.name === "完成");
+  const finishStep = (o: DoOrder) => (stepsByOrder[o.id] ?? []).find((s) => s.name === "完成");
   const isDone = (o: DoOrder) => { const l = stepsByOrder[o.id] ?? []; return l.length > 0 && (l.every((s) => s.done_at) || !!finishStep(o)?.done_at); };
   const doneTime = (o: DoOrder) => o.done_at ?? finishStep(o)?.done_at ?? "";
   const active = orders.filter((o) => !isDone(o));

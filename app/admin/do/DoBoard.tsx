@@ -1,6 +1,6 @@
 "use client";
 
-// DO 流程：DO → DO BACK → 递交发票 → 收款 → 采购 → 付款 → 完成
+// DO 流程：DO → DO BACK → 递交发票 → 收款 → 采购 → 入库 → 付款 → 完成
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -25,7 +25,7 @@ type Lang = "zh" | "en";
 const T = {
   zh: {
     brand: "DO 流程", title: "DO 流程", newDo: "+ 新建 DO", board: "任务看板", myTasks: "我的任务", logout: "退出",
-    hint: "DO → DO BACK → 递交发票 → 收款 → 采购 → 付款 → 完成 · 点格子勾选，自动记录时间 · 蓝框是下一步 · 格子下方可把这一步分配给同事",
+    hint: "DO → DO BACK → 递交发票 → 收款 → 采购 → 入库 → 付款 → 完成 · 点格子勾选，自动记录时间 · 蓝框是下一步 · 格子下方可把这一步分配给同事",
     search: "搜索 标题 / DO 号 / 发票号 / 负责人…", notFound: "没有找到", noActive: "没有进行中的 DO",
     completed: "已完成", collapse: "收起", expand: "展开",
     invoice: "发票", edit: "编辑", delete: "删除", clickToDone: "点击标记完成",
@@ -33,7 +33,7 @@ const T = {
     editDo: "编辑 DO", newDoTitle: "新建 DO", fTitle: "标题（客户 / 项目）", fTitlePh: "例如：ABC Trading 太阳能板",
     fDoNo: "DO 号", optional: "可选", fInvoice: "发票号", fInvoicePh: "可选，递交发票时再填也行", fAssignee: "负责人",
     cancel: "取消", saving: "保存中…", save: "保存", create: "新建",
-    confirmDelete: "确认删除", deleteMsg: "确定删除这张 DO 单吗？7 个步骤记录和所有附件会一起删除，不可撤销。",
+    confirmDelete: "确认删除", deleteMsg: "确定删除这张 DO 单吗？8 个步骤记录和所有附件会一起删除，不可撤销。",
     deleteFileTitle: "删除附件", deleteFileMsg: "确定删除这个附件吗？不可撤销。",
     onlyImgPdf: "只能上传图片或 PDF：", tooBig: (mb: number) => `文件超过 ${mb}MB：`, uploadFail: "上传失败：", saveFail: "保存失败",
     uploaded: (n: number) => `已上传 ${n} 个附件`, openFail: "打开失败", noPermDelete: "无权限删除", fileDeleted: "已删除附件",
@@ -43,7 +43,7 @@ const T = {
   },
   en: {
     brand: "DO FLOW", title: "DO Flow", newDo: "+ New DO", board: "Task Board", myTasks: "My Tasks", logout: "Log out",
-    hint: "DO → DO BACK → Submit Invoice → Payment Received → Purchase → Payment → Done · Tap a box to check it off (time is recorded) · Blue box = next step · Use the bar under each box to assign that step to a colleague",
+    hint: "DO → DO BACK → Submit Invoice → Payment Received → Purchase → Stock In → Payment → Done · Tap a box to check it off (time is recorded) · Blue box = next step · Use the bar under each box to assign that step to a colleague",
     search: "Search title / DO no. / invoice no. / assignee…", notFound: "No results", noActive: "No DOs in progress",
     completed: "Completed", collapse: "Hide", expand: "Show",
     invoice: "Invoice", edit: "Edit", delete: "Delete", clickToDone: "Tap to mark done",
@@ -51,7 +51,7 @@ const T = {
     editDo: "Edit DO", newDoTitle: "New DO", fTitle: "Title (customer / project)", fTitlePh: "e.g. ABC Trading solar panels",
     fDoNo: "DO No.", optional: "Optional", fInvoice: "Invoice No.", fInvoicePh: "Optional — can be filled in when submitting the invoice", fAssignee: "Assignee",
     cancel: "Cancel", saving: "Saving…", save: "Save", create: "Create",
-    confirmDelete: "Confirm delete", deleteMsg: "Delete this DO? All 7 step records and attachments will be deleted too. This cannot be undone.",
+    confirmDelete: "Confirm delete", deleteMsg: "Delete this DO? All 8 step records and attachments will be deleted too. This cannot be undone.",
     deleteFileTitle: "Delete attachment", deleteFileMsg: "Delete this attachment? This cannot be undone.",
     onlyImgPdf: "Only images or PDF allowed: ", tooBig: (mb: number) => `File larger than ${mb}MB: `, uploadFail: "Upload failed: ", saveFail: "Save failed",
     uploaded: (n: number) => `Uploaded ${n} attachment${n > 1 ? "s" : ""}`, openFail: "Could not open file", noPermDelete: "No permission to delete", fileDeleted: "Attachment deleted",
@@ -64,7 +64,7 @@ const T = {
 // 步骤名存在数据库里是中文，英文界面按名称翻译
 const STEP_EN: Record<string, string> = {
   "DO": "DO", "DO BACK": "DO BACK", "递交发票": "Submit Invoice", "收款": "Payment Received",
-  "采购": "Purchase", "付款": "Payment", "完成": "Done",
+  "采购": "Purchase", "入库": "Stock In", "付款": "Payment", "完成": "Done",
 };
 const stepName = (name: string, lang: Lang) => (lang === "en" ? STEP_EN[name] ?? name : name);
 
@@ -89,7 +89,7 @@ const CSS = `
 .do-tile { position: relative; width: 76px; height: 76px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc; overflow: hidden; cursor: pointer; flex: none; padding: 0; }
 .do-tile:hover { border-color: #94a3b8; }
 .do-tile .x { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 999px; border: none; background: rgba(15,23,42,.65); color: #fff; font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; padding: 0; }
-.do-steps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.do-steps { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
 @media (max-width: 720px) {
   .do-main { padding: 16px !important; }
   .do-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -212,7 +212,7 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
   const q = query.trim().toLowerCase();
   const visible = orders.filter((o) => !q || [o.title, o.do_no, o.invoice_no, empName[o.assignee_id]].some((v) => (v ?? "").toLowerCase().includes(q)));
   // 已完成：7 步全勾，或最后一步「完成」已勾 → 跟已完成任务一样收到最下面
-  const finishStep = (o: Order) => (stepsOf[o.id] ?? []).find((s) => s.step_no === 7 || s.name === "完成");
+  const finishStep = (o: Order) => (stepsOf[o.id] ?? []).find((s) => s.name === "完成");
   const isDone = (o: Order) => { const l = stepsOf[o.id] ?? []; return l.length > 0 && (l.every((s) => s.done_at) || !!finishStep(o)?.done_at); };
   const doneTime = (o: Order) => o.done_at ?? finishStep(o)?.done_at ?? "";
   const active = visible.filter((o) => !isDone(o));
