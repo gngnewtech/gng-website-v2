@@ -54,7 +54,7 @@ export default async function AdminPage() {
   const { data: doFiles } = doIds.length
     ? await (supabase as any)
         .from("do_files")
-        .select("id, order_id, path, name, mime, uploaded_by_name, created_at")
+        .select("*") // 含 step_id（附件挂在哪一步）
         .in("order_id", doIds)
         .order("created_at", { ascending: true })
     : { data: [] };

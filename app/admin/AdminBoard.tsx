@@ -10,7 +10,7 @@ const NOTE_LABELS = { placeholder: "写进一步的进展或消息…", add: "�
 type TaskState = "todo" | "doing" | "done";
 type Task = { id: string; assignee_id: string; parent_id?: string | null; name: string; state: TaskState; important: boolean; urgent: boolean; note: string | null; is_private?: boolean; start_at?: string | null; recur?: Recur | null };
 type DoOrder = { id: string; title: string; do_no: string | null; invoice_no: string | null; assignee_id: string; created_at: string; done_at: string | null };
-type DoFile = { id: string; order_id: string; path: string; name: string; mime: string | null; uploaded_by_name: string | null; created_at: string };
+type DoFile = { id: string; order_id: string; path: string; name: string; mime: string | null; uploaded_by_name: string | null; created_at: string; step_id?: string | null };
 const DO_BUCKET = "do-files";
 const DO_MAX_MB = 10;
 const isImgFile = (f: { mime: string | null; name: string }) => (f.mime ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(f.name);
@@ -314,6 +314,8 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: 'system-ui,-apple-system,"PingFang SC",sans-serif', color: "#1e293b" }}>
       <style>{`
+        .ab-dosteps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+        @media (max-width: 600px) { .ab-dosteps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
         .ab-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
         @media (max-width: 1100px) { .ab-cols { grid-template-columns: minmax(0, 1fr); } }
         @media (max-width: 600px) {
@@ -715,29 +717,39 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
   const allFiles = useMemo(() => { const ids = new Set(files.map((f) => f.id)); return [...files, ...added.filter((f) => !ids.has(f.id))]; }, [files, added]);
   const filesOf = useMemo(() => {
     const m: Record<string, DoFile[]> = {};
-    allFiles.forEach((f) => { (m[f.order_id] ||= []).push(f); });
+    // 没挂到步骤上的（旧附件）还显示在卡片下面
+    allFiles.forEach((f) => { if (!f.step_id) (m[f.order_id] ||= []).push(f); });
+    return m;
+  }, [allFiles]);
+  const stepFilesOf = useMemo(() => {
+    const m: Record<string, DoFile[]> = {};
+    allFiles.forEach((f) => { if (f.step_id) (m[f.step_id] ||= []).push(f); });
     return m;
   }, [allFiles]);
   const [uploading, setUploading] = useState<string | null>(null);
   // 规则跟 DO 流程页一样：图片 / PDF，单个 ≤10MB，能看到这张 DO 的人都能传（数据库权限把关）
-  const upload = async (o: DoOrder, list: FileList | null) => {
+  const upload = async (o: DoOrder, list: FileList | null, stepId: string | null = null) => {
     if (!list || !list.length) return;
     const picked = Array.from(list);
     const bad = picked.find((f) => !(f.type.startsWith("image/") || f.type === "application/pdf" || /\.(pdf|png|jpe?g|webp|gif|heic|heif)$/i.test(f.name)));
     if (bad) { alert(`${t.onlyImgPdf}${bad.name}`); return; }
     const big = picked.find((f) => f.size > DO_MAX_MB * 1024 * 1024);
     if (big) { alert(`${t.tooBig(DO_MAX_MB)}${big.name}`); return; }
-    setUploading(o.id);
+    setUploading(stepId ?? o.id);
     for (const f of picked) {
       const ext = (f.name.match(/\.([a-z0-9]+)$/i)?.[1] ?? (f.type === "application/pdf" ? "pdf" : "png")).toLowerCase();
       const path = `${o.id}/${crypto.randomUUID()}.${ext}`;
       const mime = f.type || (ext === "pdf" ? "application/pdf" : `image/${ext === "jpg" ? "jpeg" : ext}`);
       const up = await sb.storage.from(DO_BUCKET).upload(path, f, { contentType: mime, upsert: false });
       if (up.error) { alert(`${t.uploadFail}${up.error.message}`); continue; }
-      const { data, error } = await sb.from("do_files")
-        .insert({ order_id: o.id, path, name: f.name, mime, size: f.size })
-        .select("id, order_id, path, name, mime, uploaded_by_name, created_at")
-        .single();
+      const row: any = { order_id: o.id, path, name: f.name, mime, size: f.size };
+      if (stepId) row.step_id = stepId;
+      let { data, error } = await sb.from("do_files").insert(row).select("*").single();
+      // 数据库还没加 step_id 列时，先按整张 DO 的附件保存
+      if (error && stepId && /step_id/.test(error.message ?? "")) {
+        delete row.step_id;
+        ({ data, error } = await sb.from("do_files").insert(row).select("*").single());
+      }
       if (error || !data) { await sb.storage.from(DO_BUCKET).remove([path]); alert(`${t.saveFail}${error?.message ?? ""}`); continue; }
       setAdded((prev) => [...prev, data as DoFile]);
     }
@@ -784,33 +796,50 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
             {o.invoice_no && <span style={doChip}>{t.invoice} {o.invoice_no}</span>}
           </div>
         )}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6, marginTop: 10 }}>
+        <div className="ab-dosteps">
           {steps.map((s, i) => {
             const on = !!s.done_at; const isNext = i === nextIdx;
+            const sf = stepFilesOf[s.id] ?? [];
+            const busyStep = uploading === s.id;
             return (
-              <button key={s.id} onClick={() => setStepMenu({ step: s, title: o.title })} title={on ? `${s.done_by_name ?? ""} ${fmtT(s.done_at!)}` : t.clickTip}
-                style={{ padding: "6px 4px", borderRadius: 6, cursor: "pointer", fontSize: 12, lineHeight: 1.3, textAlign: "center", minWidth: 0,
+              <div key={s.id} role="button" onClick={() => setStepMenu({ step: s, title: o.title })} title={on ? `${s.done_by_name ?? ""} ${fmtT(s.done_at!)}` : t.clickTip}
+                style={{ padding: "6px 4px", borderRadius: 6, cursor: "pointer", fontSize: 12, lineHeight: 1.3, textAlign: "center", minWidth: 0, display: "flex", flexDirection: "column", alignItems: "stretch",
                   border: `${isNext ? 2 : 1}px solid ${on ? "#10b981" : isNext ? "#2563eb" : "#e2e8f0"}`,
                   background: on ? "#ecfdf5" : "#fff", color: on ? "#047857" : isNext ? "#1d4ed8" : "#94a3b8", fontWeight: on || isNext ? 600 : 400 }}>
                 <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{on ? "✓ " : ""}{doStepName(s.name, lang)}</div>
-                {on && <div style={{ fontSize: 10, fontWeight: 400, color: "#64748b", marginTop: 2, whiteSpace: "nowrap" }}>{fmtT(s.done_at!)}</div>}
+                {on && <div style={{ fontSize: 10, fontWeight: 400, color: "#64748b", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fmtT(s.done_at!)}</div>}
                 {s.assignee_id && <div style={{ fontSize: 10, fontWeight: 600, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: s.assignee_id === emp.id ? "#b45309" : "#1d4ed8" }}>👤 {empName[s.assignee_id] ?? "?"}</div>}
-              </button>
+                {/* 这一步的附件 */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 3, justifyContent: "center", marginTop: 5 }}>
+                  {sf.map((f) => (
+                    <button key={f.id} onClick={(e) => { e.stopPropagation(); openFile(f); }} title={`${f.name}\n${f.uploaded_by_name ?? ""} ${fmtT(f.created_at)}`}
+                      style={{ width: 26, height: 26, padding: 0, borderRadius: 4, border: "1px solid #e2e8f0", background: "#f8fafc", overflow: "hidden", cursor: "pointer", flex: "none" }}>
+                      {isImgFile(f)
+                        ? (thumbs[f.path]
+                            ? <img src={thumbs[f.path]} alt={f.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                            : <span style={{ fontSize: 12 }}>🖼</span>)
+                        : <span style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#dc2626", background: "#fef2f2" }}>PDF</span>}
+                    </button>
+                  ))}
+                  <label onClick={(e) => e.stopPropagation()} title={t.addFile}
+                    style={{ width: 26, height: 26, borderRadius: 4, border: "1px dashed #cbd5e1", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 400, display: "flex", alignItems: "center", justifyContent: "center", flex: "none", opacity: busyStep ? 0.5 : 1, cursor: busyStep ? "default" : "pointer" }}>
+                    {busyStep ? "…" : "📎"}
+                    <input type="file" accept="image/*,application/pdf" multiple disabled={busyStep} style={{ display: "none" }}
+                      onChange={(e) => { const l = e.target.files; upload(o, l, s.id); e.target.value = ""; }} />
+                  </label>
+                </div>
+              </div>
             );
           })}
         </div>
         {(() => {
+          // 只剩没挂到步骤上的旧附件；新附件都在各步骤格子里上传
           const fl = filesOf[o.id] ?? [];
-          const busyUp = uploading === o.id;
+          if (!fl.length) return null;
           return (
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #e2e8f0" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: fl.length ? 6 : 0 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>{t.attachments}{fl.length > 0 ? ` ${fl.length}` : ""}</span>
-              <label style={{ marginLeft: "auto", fontSize: 12, padding: "3px 10px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#fff", color: "#334155", whiteSpace: "nowrap", flex: "none", opacity: busyUp ? 0.5 : 1, cursor: busyUp ? "default" : "pointer" }}>
-                {busyUp ? t.uploading : t.addFile}
-                <input type="file" accept="image/*,application/pdf" multiple disabled={busyUp} style={{ display: "none" }}
-                  onChange={(e) => { const l = e.target.files; upload(o, l); e.target.value = ""; }} />
-              </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>{t.attachments} {fl.length}</span>
             </div>
             {fl.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
