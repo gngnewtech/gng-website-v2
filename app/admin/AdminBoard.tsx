@@ -152,6 +152,15 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
     if (!res.ok) { setDoSteps(backup); const d = await res.json().catch(() => ({} as any)); showToast(d?.error || "操作失败"); return; }
     router.refresh();
   };
+  // 分配 DO 某一步的负责人（toId 为空 = 取消分配）
+  const doAssignStep = async (st: DoStep, toId: string | null) => {
+    const backup = doSteps;
+    setDoSteps((prev) => prev.map((x) => (x.id === st.id ? { ...x, assignee_id: toId } : x)));
+    const res = await fetch("/api/do", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "assignStep", step_id: st.id, to_assignee_id: toId }) });
+    if (!res.ok) { setDoSteps(backup); const d = await res.json().catch(() => ({} as any)); showToast(d?.error || "分配失败"); return; }
+    showToast(toId ? `「${st.name}」已分配给 ${employees.find((e) => e.id === toId)?.name ?? ""}` : `「${st.name}」已取消分配`);
+    router.refresh();
+  };
   const [tasks, setTasks] = useState<Task[]>(tasksProp);
   useEffect(() => { setTasks(tasksProp); }, [tasksProp]);
   const [notes, setNotes] = useState<TaskNote[]>(notesProp);
@@ -330,7 +339,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
           <Detail emp={selected} tasks={tasksOf(selected.id)} onBack={() => setSelectedId(null)}
             onCycle={doCycle} onSetPriority={doSetPriority} notesByTask={notesByTask} onAddNote={doAddNote} onDeleteNote={doDeleteNote} meId={meId} onSetStart={doSetStart} onDelete={(t: Task) => setConfirmDelete(t)} onEdit={(t: Task) => setEditTask(t)} isAdmin={isAdmin} onManageAccount={(e: Employee) => setCredsFor(e)} canRemove={isAdmin && !selected.is_admin && selected.id !== meId} onRemove={() => setRemoveEmp(selected)}
             onAssignHere={() => { setAssignFor(selected.id); setAssignOpen(true); }} onSubtask={(t: Task) => setSubFor(t)} allTasks={tasks} bar={bar}
-            doOrders={doOrders} doFiles={doFiles} employees={employees} stepsByOrder={stepsByOrder} onToggleStep={doToggleStep} />
+            doOrders={doOrders} doFiles={doFiles} employees={employees} stepsByOrder={stepsByOrder} onToggleStep={doToggleStep} onAssignStep={doAssignStep} />
         ) : (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
@@ -450,7 +459,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   );
 }
 
-function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], stepsByOrder = {}, onToggleStep, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onSubtask, allTasks = [], bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
+function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], stepsByOrder = {}, onToggleStep, onAssignStep, onBack, onCycle, onSetPriority, notesByTask, onAddNote, onDeleteNote, meId, onSetStart, onDelete, onEdit, onAssignHere, onSubtask, allTasks = [], bar, isAdmin, onManageAccount, canRemove, onRemove }: any) {
   const s = stats(tasks); const m = META[statusOf(emp, tasks)];
   const sorted = [...tasks].sort((a, b) => {
     // 已完成的排到最后；其余：紧急优先 → 有时间的按时间 → 无时间的在后
@@ -619,7 +628,7 @@ function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], steps
         </>
       )}
       </section>
-      <DoColumn emp={emp} orders={doOrders} files={doFiles} employees={employees} stepsByOrder={stepsByOrder} onToggle={onToggleStep} />
+      <DoColumn emp={emp} orders={doOrders} files={doFiles} employees={employees} stepsByOrder={stepsByOrder} onToggle={onToggleStep} onAssign={onAssignStep} />
       </div>
 
       {confirmDone && (
@@ -639,8 +648,10 @@ function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], steps
   );
 }
 
-function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder, onToggle }: { emp: Employee; orders: DoOrder[]; files?: DoFile[]; employees: Employee[]; stepsByOrder: Record<string, DoStep[]>; onToggle: (s: DoStep) => void }) {
+function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder, onToggle, onAssign }: { emp: Employee; orders: DoOrder[]; files?: DoFile[]; employees: Employee[]; stepsByOrder: Record<string, DoStep[]>; onToggle: (s: DoStep) => void; onAssign: (s: DoStep, toId: string | null) => void }) {
   const [doneOpen, setDoneOpen] = useState(false);
+  // 点步骤格子 → 弹出「分配给谁」（也可以在弹窗里标记完成）
+  const [stepMenu, setStepMenu] = useState<{ step: DoStep; title: string } | null>(null);
   // 管理员 / 经理默认看全部 DO，可切换只看当前员工的
   const [onlyEmp, setOnlyEmp] = useState(false);
   const empName: Record<string, string> = useMemo(() => Object.fromEntries(employees.map((e) => [e.id, e.name])), [employees]);
@@ -700,7 +711,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
           {steps.map((s, i) => {
             const on = !!s.done_at; const isNext = i === nextIdx;
             return (
-              <button key={s.id} onClick={() => onToggle(s)} title={on ? `${s.done_by_name ?? ""} ${fmtT(s.done_at!)}` : "点击标记完成"}
+              <button key={s.id} onClick={() => setStepMenu({ step: s, title: o.title })} title={on ? `${s.done_by_name ?? ""} ${fmtT(s.done_at!)}` : "点击分配 / 标记完成"}
                 style={{ padding: "6px 4px", borderRadius: 6, cursor: "pointer", fontSize: 12, lineHeight: 1.3, textAlign: "center", minWidth: 0,
                   border: `${isNext ? 2 : 1}px solid ${on ? "#10b981" : isNext ? "#2563eb" : "#e2e8f0"}`,
                   background: on ? "#ecfdf5" : "#fff", color: on ? "#047857" : isNext ? "#1d4ed8" : "#94a3b8", fontWeight: on || isNext ? 600 : 400 }}>
@@ -746,7 +757,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
         <button onClick={() => setOnlyEmp(false)} style={chipStyle(!onlyEmp, "#0f172a")}>全部 {allOrders.length}</button>
         <button onClick={() => setOnlyEmp(true)} style={chipStyle(onlyEmp, "#0f172a")}>只看 {emp.name} {empCount}</button>
       </div>
-      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>点格子勾选步骤 · 蓝框是下一步 · 橙色名字是当前员工负责的 · 每一步的负责人在「DO 流程」里分配</p>
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>点步骤格子：分配给谁 / 标记完成 · 蓝框是下一步 · 橙色名字是当前员工负责的</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {active.length === 0
           ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 24, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>没有进行中的 DO</div>
@@ -763,6 +774,39 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
           {doneOpen && <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 12px 12px" }}>{done.map(card)}</div>}
         </div>
       )}
+      {stepMenu && (() => {
+        const st = stepMenu.step;
+        const on = !!st.done_at;
+        const pick = (id: string | null) => { setStepMenu(null); if ((st.assignee_id ?? null) !== id) onAssign(st, id); };
+        return (
+          <div style={overlay} onClick={() => setStepMenu(null)}>
+            <div style={{ ...modal, maxHeight: "85vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>「{st.name}」分配给谁？</h3>
+              <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 16px", wordBreak: "break-word" }}>{stepMenu.title}</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {employees.map((e) => {
+                  const cur = st.assignee_id === e.id;
+                  return (
+                    <button key={e.id} onClick={() => pick(e.id)}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, cursor: "pointer", textAlign: "left", fontSize: 15,
+                        border: `1px solid ${cur ? "#2563eb" : "#e2e8f0"}`, background: cur ? "#eff6ff" : "#fff", color: cur ? "#1d4ed8" : "#334155", fontWeight: cur ? 600 : 400 }}>
+                      <span style={{ flex: 1 }}>{e.name}{e.role ? <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 400 }}> · {e.role}</span> : null}</span>
+                      {cur && <span>✓</span>}
+                    </button>
+                  );
+                })}
+                {st.assignee_id && (
+                  <button onClick={() => pick(null)} style={{ padding: "10px 12px", borderRadius: 8, cursor: "pointer", fontSize: 14, border: "1px dashed #cbd5e1", background: "#fff", color: "#64748b" }}>不分配</button>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "space-between" }}>
+                <button onClick={() => { setStepMenu(null); onToggle(st); }} style={on ? btnGhost : { ...btnGhost, borderColor: "#10b981", color: "#047857" }}>{on ? "取消完成" : "✓ 标记完成"}</button>
+                <button onClick={() => setStepMenu(null)} style={btnGhost}>关闭</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </section>
   );
 }
