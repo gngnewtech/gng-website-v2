@@ -51,6 +51,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  if (action === "assignStep") {
+    // 分配某一步的负责人（to_assignee_id 为空 = 取消分配）；权限由数据库 set_do_step_assignee 校验
+    const { step_id, to_assignee_id } = body;
+    if (!step_id) return NextResponse.json({ error: "缺少参数" }, { status: 400 });
+    const { error } = await supabase.rpc("set_do_step_assignee", { p_step: step_id, p_to: to_assignee_id || null });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "delete") {
     const { order_id } = body;
     // 先删存储里的附件文件（表记录会随 DO 单级联删除）

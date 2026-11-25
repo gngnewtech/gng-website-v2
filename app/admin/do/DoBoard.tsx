@@ -12,7 +12,7 @@ type DFile = { id: string; order_id: string; path: string; name: string; mime: s
 const BUCKET = "do-files";
 const MAX_MB = 10;
 const isImg = (f: { mime: string | null; name: string }) => (f.mime ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(f.name);
-type Step = { id: string; order_id: string; step_no: number; name: string; done_at: string | null; done_by_name: string | null };
+type Step = { id: string; order_id: string; step_no: number; name: string; done_at: string | null; done_by_name: string | null; assignee_id?: string | null };
 
 async function api(body: any) {
   const res = await fetch("/api/do", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -25,7 +25,7 @@ type Lang = "zh" | "en";
 const T = {
   zh: {
     brand: "DO 流程", title: "DO 流程", newDo: "+ 新建 DO", board: "任务看板", myTasks: "我的任务", logout: "退出",
-    hint: "DO → DO BACK → 递交发票 → 收款 → 采购 → 付款 → 完成 · 点格子勾选，自动记录时间 · 蓝框是下一步",
+    hint: "DO → DO BACK → 递交发票 → 收款 → 采购 → 付款 → 完成 · 点格子勾选，自动记录时间 · 蓝框是下一步 · 格子下方可把这一步分配给同事",
     search: "搜索 标题 / DO 号 / 发票号 / 负责人…", notFound: "没有找到", noActive: "没有进行中的 DO",
     completed: "已完成", collapse: "收起", expand: "展开",
     invoice: "发票", edit: "编辑", delete: "删除", clickToDone: "点击标记完成",
@@ -39,10 +39,11 @@ const T = {
     uploaded: (n: number) => `已上传 ${n} 个附件`, openFail: "打开失败", noPermDelete: "无权限删除", fileDeleted: "已删除附件",
     undoStep: (name: string) => `取消「${name}」这一步？`, opFail: "操作失败", saved: "已保存", created: "已新建 DO",
     deleteFail: "删除失败", deleted: "已删除",
+    assign: "+ 分配", unassign: "不分配", assigned: (n: string) => `已分配给 ${n}`, unassigned: "已取消分配", mine: "我",
   },
   en: {
     brand: "DO FLOW", title: "DO Flow", newDo: "+ New DO", board: "Task Board", myTasks: "My Tasks", logout: "Log out",
-    hint: "DO → DO BACK → Submit Invoice → Payment Received → Purchase → Payment → Done · Tap a box to check it off (time is recorded) · Blue box = next step",
+    hint: "DO → DO BACK → Submit Invoice → Payment Received → Purchase → Payment → Done · Tap a box to check it off (time is recorded) · Blue box = next step · Use the bar under each box to assign that step to a colleague",
     search: "Search title / DO no. / invoice no. / assignee…", notFound: "No results", noActive: "No DOs in progress",
     completed: "Completed", collapse: "Hide", expand: "Show",
     invoice: "Invoice", edit: "Edit", delete: "Delete", clickToDone: "Tap to mark done",
@@ -56,6 +57,7 @@ const T = {
     uploaded: (n: number) => `Uploaded ${n} attachment${n > 1 ? "s" : ""}`, openFail: "Could not open file", noPermDelete: "No permission to delete", fileDeleted: "Attachment deleted",
     undoStep: (name: string) => `Uncheck "${name}"?`, opFail: "Action failed", saved: "Saved", created: "DO created",
     deleteFail: "Delete failed", deleted: "Deleted",
+    assign: "+ Assign", unassign: "Unassigned", assigned: (n: string) => `Assigned to ${n}`, unassigned: "Unassigned", mine: "Me",
   },
 };
 
@@ -226,6 +228,16 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
     router.refresh();
   };
 
+  // 分配某一步的负责人：管理员 / 经理 / DO 单负责人可以分配
+  const assignStep = async (s: Step, toId: string) => {
+    const backup = steps;
+    setSteps((prev) => prev.map((x) => (x.id === s.id ? { ...x, assignee_id: toId || null } : x)));
+    const r = await api({ action: "assignStep", step_id: s.id, to_assignee_id: toId || null });
+    if (!r.ok) { setSteps(backup); showToast(errText(r.error, lang) || t.opFail); return; }
+    showToast(toId ? t.assigned(empName[toId] ?? "") : t.unassigned);
+    router.refresh();
+  };
+
   const openNew = () => setForm({ title: "", do_no: "", invoice_no: "", assignee_id: me.id });
   const openEdit = (o: Order) => setForm({ id: o.id, title: o.title, do_no: o.do_no ?? "", invoice_no: o.invoice_no ?? "", assignee_id: o.assignee_id });
   const saveForm = async () => {
@@ -255,6 +267,7 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
     const n = l.filter((s) => s.done_at).length;
     const nextId = l.find((s) => !s.done_at)?.id;
     const finished = l.length > 0 && n === l.length;
+    const canAssign = me.canManage || o.assignee_id === me.id;
     return (
       <div key={o.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
@@ -270,10 +283,14 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
           {l.map((s) => {
             const on = !!s.done_at;
             const isNext = s.id === nextId;
+            const who = s.assignee_id ?? "";
+            const isMe = who === me.id;
             return (
-              <button key={s.id} onClick={() => toggle(s)} title={on ? `${s.done_by_name ?? ""} ${fmt(s.done_at, lang)}` : t.clickToDone}
-                style={{ textAlign: "left", padding: "8px 8px", borderRadius: 8, cursor: "pointer", minHeight: 58, display: "flex", flexDirection: "column", gap: 3,
-                  border: `1px solid ${on ? "#a7f3d0" : isNext ? "#2563eb" : "#e2e8f0"}`, background: on ? "#ecfdf5" : "#fff" }}>
+              <div key={s.id} style={{ display: "flex", flexDirection: "column", borderRadius: 8, overflow: "hidden", minWidth: 0,
+                border: `1px solid ${on ? "#a7f3d0" : isNext ? "#2563eb" : "#e2e8f0"}`, background: on ? "#ecfdf5" : "#fff" }}>
+              <button onClick={() => toggle(s)} title={on ? `${s.done_by_name ?? ""} ${fmt(s.done_at, lang)}` : t.clickToDone}
+                style={{ textAlign: "left", padding: "8px 8px", cursor: "pointer", minHeight: 58, display: "flex", flexDirection: "column", gap: 3, flex: 1,
+                  border: "none", background: "transparent" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: on ? "#047857" : isNext ? "#1d4ed8" : "#64748b" }}>
                   <span style={{ width: 15, height: 15, borderRadius: 4, flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff",
                     background: on ? "#10b981" : "#fff", border: `1.5px solid ${on ? "#10b981" : isNext ? "#2563eb" : "#cbd5e1"}` }}>{on ? "✓" : ""}</span>
@@ -282,6 +299,18 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
                 {on && <span style={{ fontSize: 11, color: "#64748b", lineHeight: 1.3 }}>{fmt(s.done_at, lang)}</span>}
                 {on && s.done_by_name && <span style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.3 }}>{s.done_by_name}</span>}
               </button>
+              {canAssign ? (
+                <select value={who} onChange={(e) => assignStep(s, e.target.value)}
+                  style={{ width: "100%", fontSize: 11, padding: "4px 4px", border: "none", borderTop: "1px dashed #e2e8f0", fontFamily: "inherit", outline: "none", cursor: "pointer",
+                    background: who ? (isMe ? "#fffbeb" : "#eff6ff") : "transparent", color: who ? (isMe ? "#b45309" : "#1d4ed8") : "#94a3b8" }}>
+                  <option value="">{who ? t.unassign : t.assign}</option>
+                  {employees.map((e) => <option key={e.id} value={e.id}>👤 {e.id === me.id ? t.mine : e.name}</option>)}
+                </select>
+              ) : who ? (
+                <span style={{ fontSize: 11, padding: "4px 6px", borderTop: "1px dashed #e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  background: isMe ? "#fffbeb" : "#eff6ff", color: isMe ? "#b45309" : "#1d4ed8" }}>👤 {isMe ? t.mine : empName[who] ?? "?"}</span>
+              ) : null}
+              </div>
             );
           })}
         </div>

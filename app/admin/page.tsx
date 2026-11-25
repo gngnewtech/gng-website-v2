@@ -47,7 +47,7 @@ export default async function AdminPage() {
   const { data: doSteps } = doIds.length
     ? await (supabase as any)
         .from("do_steps")
-        .select("id, order_id, step_no, name, done_at, done_by_name")
+        .select("*") // 含 assignee_id（SQL 未运行时该字段为空也不报错）
         .in("order_id", doIds)
         .order("step_no", { ascending: true })
     : { data: [] };

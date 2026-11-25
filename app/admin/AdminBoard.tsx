@@ -13,7 +13,7 @@ type DoOrder = { id: string; title: string; do_no: string | null; invoice_no: st
 type DoFile = { id: string; order_id: string; path: string; name: string; mime: string | null; uploaded_by_name: string | null; created_at: string };
 const DO_BUCKET = "do-files";
 const isImgFile = (f: { mime: string | null; name: string }) => (f.mime ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(f.name);
-type DoStep = { id: string; order_id: string; step_no: number; name: string; done_at: string | null; done_by_name: string | null };
+type DoStep = { id: string; order_id: string; step_no: number; name: string; done_at: string | null; done_by_name: string | null; assignee_id?: string | null };
 type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean; is_admin?: boolean; is_manager?: boolean; user_id?: string | null; username?: string | null };
 
 function stats(tasks: Task[]) {
@@ -644,8 +644,10 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
   // 管理员 / 经理默认看全部 DO，可切换只看当前员工的
   const [onlyEmp, setOnlyEmp] = useState(false);
   const empName: Record<string, string> = useMemo(() => Object.fromEntries(employees.map((e) => [e.id, e.name])), [employees]);
-  const empCount = allOrders.filter((o) => o.assignee_id === emp.id).length;
-  const orders = onlyEmp ? allOrders.filter((o) => o.assignee_id === emp.id) : allOrders;
+  // 「只看某员工」：DO 单负责人是 TA，或某一步分配给了 TA
+  const isEmpDo = (o: DoOrder) => o.assignee_id === emp.id || (stepsByOrder[o.id] ?? []).some((st) => st.assignee_id === emp.id);
+  const empCount = allOrders.filter(isEmpDo).length;
+  const orders = onlyEmp ? allOrders.filter(isEmpDo) : allOrders;
   // 附件：私有桶，图片用 1 小时签名链接做缩略图；点击用 10 分钟签名链接打开
   const sb = useMemo(() => createClient(), []);
   const filesOf = useMemo(() => {
@@ -704,6 +706,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
                   background: on ? "#ecfdf5" : "#fff", color: on ? "#047857" : isNext ? "#1d4ed8" : "#94a3b8", fontWeight: on || isNext ? 600 : 400 }}>
                 <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{on ? "✓ " : ""}{s.name}</div>
                 {on && <div style={{ fontSize: 10, fontWeight: 400, color: "#64748b", marginTop: 2, whiteSpace: "nowrap" }}>{fmtT(s.done_at!)}</div>}
+                {s.assignee_id && <div style={{ fontSize: 10, fontWeight: 600, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: s.assignee_id === emp.id ? "#b45309" : "#1d4ed8" }}>👤 {empName[s.assignee_id] ?? "?"}</div>}
               </button>
             );
           })}
@@ -743,7 +746,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
         <button onClick={() => setOnlyEmp(false)} style={chipStyle(!onlyEmp, "#0f172a")}>全部 {allOrders.length}</button>
         <button onClick={() => setOnlyEmp(true)} style={chipStyle(onlyEmp, "#0f172a")}>只看 {emp.name} {empCount}</button>
       </div>
-      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>点格子勾选步骤 · 蓝框是下一步 · 橙色名字是当前员工负责的</p>
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>点格子勾选步骤 · 蓝框是下一步 · 橙色名字是当前员工负责的 · 每一步的负责人在「DO 流程」里分配</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {active.length === 0
           ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 24, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>没有进行中的 DO</div>

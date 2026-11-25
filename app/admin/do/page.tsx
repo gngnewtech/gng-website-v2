@@ -19,11 +19,10 @@ export default async function DoPage() {
   const canManage = !!(me.is_admin || me.is_manager);
 
   // 负责人名单（管理员/经理可选全部员工；可查看全部 DO 的员工取全员名单用于显示负责人；普通员工只有自己）
+  // （每一步都可以分配给同事，所以普通员工也取全员名单）
   const { data: employees } = canManage
     ? await supabase.from("employees").select("id, name, role").order("created_at", { ascending: true })
-    : me.can_see_all_do
-      ? await supabase.rpc("get_staff")
-      : { data: [{ id: me.id, name: me.name, role: null }] };
+    : await supabase.rpc("get_staff");
 
   // DO 单 + 步骤（普通员工只看到自己负责的；can_see_all_do 的员工看全部；由 RLS 过滤）
   const { data: orders } = await supabase
@@ -35,7 +34,7 @@ export default async function DoPage() {
   const { data: steps } = ids.length
     ? await supabase
         .from("do_steps")
-        .select("id, order_id, step_no, name, done_at, done_by_name")
+        .select("*") // 含 assignee_id（SQL 未运行时该字段为空也不报错）
         .in("order_id", ids)
         .order("step_no", { ascending: true })
     : { data: [] };
@@ -53,7 +52,7 @@ export default async function DoPage() {
     <DoBoard
       me={{ id: me.id, name: me.name, isAdmin: !!me.is_admin, canManage }}
       email={user.email ?? ""}
-      employees={employees ?? []}
+      employees={employees?.length ? employees : [{ id: me.id, name: me.name, role: null }]}
       orders={orders ?? []}
       steps={steps ?? []}
       files={files ?? []}
