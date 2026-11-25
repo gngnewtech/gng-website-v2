@@ -12,6 +12,7 @@ type Task = { id: string; assignee_id: string; parent_id?: string | null; name: 
 type DoOrder = { id: string; title: string; do_no: string | null; invoice_no: string | null; assignee_id: string; created_at: string; done_at: string | null };
 type DoFile = { id: string; order_id: string; path: string; name: string; mime: string | null; uploaded_by_name: string | null; created_at: string };
 const DO_BUCKET = "do-files";
+const DO_MAX_MB = 10;
 const isImgFile = (f: { mime: string | null; name: string }) => (f.mime ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(f.name);
 type DoStep = { id: string; order_id: string; step_no: number; name: string; done_at: string | null; done_by_name: string | null; assignee_id?: string | null };
 type Employee = { id: string; name: string; role: string | null; dept: string | null; email: string; absent: boolean; is_admin?: boolean; is_manager?: boolean; user_id?: string | null; username?: string | null };
@@ -673,7 +674,8 @@ const DO_T = {
     title: "DO 单", flow: "DO 流程 →", all: "全部", only: (n: string) => `只看 ${n}`,
     hint: "点步骤格子：分配给谁 / 标记完成 · 蓝框是下一步 · 橙色名字是当前员工负责的",
     noActive: "没有进行中的 DO", completed: "已完成", collapse: "收起", expand: "展开",
-    invoice: "发票", attachments: "📎 附件", openFail: "打开失败", clickTip: "点击分配 / 标记完成",
+    invoice: "发票", attachments: "📎 附件", openFail: "打开失败", addFile: "+ 截图 / PDF", uploading: "上传中…",
+    onlyImgPdf: "只能上传图片或 PDF：", tooBig: (mb: number) => `文件超过 ${mb}MB：`, uploadFail: "上传失败：", saveFail: "保存失败：", clickTip: "点击分配 / 标记完成",
     assignTo: (s: string) => `「${s}」分配给谁？`, unassign: "不分配", markDone: "✓ 标记完成", undoDone: "取消完成", close: "关闭",
     undoConfirm: (s: string) => `取消「${s}」这一步？`, opFail: "操作失败", assignFail: "分配失败",
     assigned: (s: string, n: string) => `「${s}」已分配给 ${n}`, unassigned: (s: string) => `「${s}」已取消分配`,
@@ -682,7 +684,8 @@ const DO_T = {
     title: "DOs", flow: "DO Flow →", all: "All", only: (n: string) => `Only ${n}`,
     hint: "Tap a step: assign it / mark done · Blue box = next step · Orange name = this employee",
     noActive: "No DOs in progress", completed: "Completed", collapse: "Hide", expand: "Show",
-    invoice: "Invoice", attachments: "📎 Attachments", openFail: "Could not open file", clickTip: "Tap to assign / mark done",
+    invoice: "Invoice", attachments: "📎 Attachments", openFail: "Could not open file", addFile: "+ Photo / PDF", uploading: "Uploading…",
+    onlyImgPdf: "Only images or PDF allowed: ", tooBig: (mb: number) => `File larger than ${mb}MB: `, uploadFail: "Upload failed: ", saveFail: "Save failed: ", clickTip: "Tap to assign / mark done",
     assignTo: (s: string) => `Assign "${s}" to whom?`, unassign: "Unassign", markDone: "✓ Mark done", undoDone: "Undo done", close: "Close",
     undoConfirm: (s: string) => `Uncheck "${s}"?`, opFail: "Action failed", assignFail: "Assign failed",
     assigned: (s: string, n: string) => `"${s}" assigned to ${n}`, unassigned: (s: string) => `"${s}" unassigned`,
@@ -707,14 +710,42 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
   const orders = onlyEmp ? allOrders.filter(isEmpDo) : allOrders;
   // 附件：私有桶，图片用 1 小时签名链接做缩略图；点击用 10 分钟签名链接打开
   const sb = useMemo(() => createClient(), []);
+  // 在这里新上传的附件先放本地，跟父组件传进来的合并（按 id 去重）
+  const [added, setAdded] = useState<DoFile[]>([]);
+  const allFiles = useMemo(() => { const ids = new Set(files.map((f) => f.id)); return [...files, ...added.filter((f) => !ids.has(f.id))]; }, [files, added]);
   const filesOf = useMemo(() => {
     const m: Record<string, DoFile[]> = {};
-    files.forEach((f) => { (m[f.order_id] ||= []).push(f); });
+    allFiles.forEach((f) => { (m[f.order_id] ||= []).push(f); });
     return m;
-  }, [files]);
+  }, [allFiles]);
+  const [uploading, setUploading] = useState<string | null>(null);
+  // 规则跟 DO 流程页一样：图片 / PDF，单个 ≤10MB，能看到这张 DO 的人都能传（数据库权限把关）
+  const upload = async (o: DoOrder, list: FileList | null) => {
+    if (!list || !list.length) return;
+    const picked = Array.from(list);
+    const bad = picked.find((f) => !(f.type.startsWith("image/") || f.type === "application/pdf" || /\.(pdf|png|jpe?g|webp|gif|heic|heif)$/i.test(f.name)));
+    if (bad) { alert(`${t.onlyImgPdf}${bad.name}`); return; }
+    const big = picked.find((f) => f.size > DO_MAX_MB * 1024 * 1024);
+    if (big) { alert(`${t.tooBig(DO_MAX_MB)}${big.name}`); return; }
+    setUploading(o.id);
+    for (const f of picked) {
+      const ext = (f.name.match(/\.([a-z0-9]+)$/i)?.[1] ?? (f.type === "application/pdf" ? "pdf" : "png")).toLowerCase();
+      const path = `${o.id}/${crypto.randomUUID()}.${ext}`;
+      const mime = f.type || (ext === "pdf" ? "application/pdf" : `image/${ext === "jpg" ? "jpeg" : ext}`);
+      const up = await sb.storage.from(DO_BUCKET).upload(path, f, { contentType: mime, upsert: false });
+      if (up.error) { alert(`${t.uploadFail}${up.error.message}`); continue; }
+      const { data, error } = await sb.from("do_files")
+        .insert({ order_id: o.id, path, name: f.name, mime, size: f.size })
+        .select("id, order_id, path, name, mime, uploaded_by_name, created_at")
+        .single();
+      if (error || !data) { await sb.storage.from(DO_BUCKET).remove([path]); alert(`${t.saveFail}${error?.message ?? ""}`); continue; }
+      setAdded((prev) => [...prev, data as DoFile]);
+    }
+    setUploading(null);
+  };
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   useEffect(() => {
-    const need = files.filter((f) => isImgFile(f) && !thumbs[f.path]).map((f) => f.path);
+    const need = allFiles.filter((f) => isImgFile(f) && !thumbs[f.path]).map((f) => f.path);
     if (!need.length) return;
     let alive = true;
     sb.storage.from(DO_BUCKET).createSignedUrls(need, 3600).then(({ data }: any) => {
@@ -722,7 +753,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
       setThumbs((prev) => { const n = { ...prev }; data.forEach((d: any) => { if (d.signedUrl && d.path) n[d.path] = d.signedUrl; }); return n; });
     });
     return () => { alive = false; };
-  }, [files, sb]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allFiles, sb]); // eslint-disable-line react-hooks/exhaustive-deps
   const openFile = async (f: DoFile) => {
     const w = window.open("", "_blank"); // 先同步开窗口，避免手机浏览器拦截
     const { data, error } = await sb.storage.from(DO_BUCKET).createSignedUrl(f.path, 600);
@@ -768,11 +799,22 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
             );
           })}
         </div>
-        {(filesOf[o.id] ?? []).length > 0 && (
+        {(() => {
+          const fl = filesOf[o.id] ?? [];
+          const busyUp = uploading === o.id;
+          return (
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #e2e8f0" }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>{t.attachments} {(filesOf[o.id] ?? []).length}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: fl.length ? 6 : 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>{t.attachments}{fl.length > 0 ? ` ${fl.length}` : ""}</span>
+              <label style={{ marginLeft: "auto", fontSize: 12, padding: "3px 10px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#fff", color: "#334155", whiteSpace: "nowrap", flex: "none", opacity: busyUp ? 0.5 : 1, cursor: busyUp ? "default" : "pointer" }}>
+                {busyUp ? t.uploading : t.addFile}
+                <input type="file" accept="image/*,application/pdf" multiple disabled={busyUp} style={{ display: "none" }}
+                  onChange={(e) => { const l = e.target.files; upload(o, l); e.target.value = ""; }} />
+              </label>
+            </div>
+            {fl.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {(filesOf[o.id] ?? []).map((f) => (
+              {fl.map((f) => (
                 <button key={f.id} onClick={() => openFile(f)} title={`${f.name}\n${f.uploaded_by_name ?? ""} ${fmtT(f.created_at)}`}
                   style={{ width: 60, height: 60, padding: 0, borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", overflow: "hidden", cursor: "pointer", flex: "none" }}>
                   {isImgFile(f)
@@ -788,8 +830,10 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
                 </button>
               ))}
             </div>
+            )}
           </div>
-        )}
+          );
+        })()}
       </div>
     );
   };
