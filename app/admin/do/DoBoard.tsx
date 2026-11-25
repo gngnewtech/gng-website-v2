@@ -228,7 +228,7 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
     router.refresh();
   };
 
-  // 分配某一步的负责人：管理员 / 经理 / 可查看全部 DO 的员工 / DO 单负责人可以分配
+  // 分配某一步的负责人：所有能看到这张 DO 的员工都可以分配
   const assignStep = async (s: Step, toId: string) => {
     const backup = steps;
     setSteps((prev) => prev.map((x) => (x.id === s.id ? { ...x, assignee_id: toId || null } : x)));
@@ -267,7 +267,7 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
     const n = l.filter((s) => s.done_at).length;
     const nextId = l.find((s) => !s.done_at)?.id;
     const finished = l.length > 0 && n === l.length;
-    const canAssign = me.canManage || !!me.canSeeAll || o.assignee_id === me.id; // 可查看全部 DO 的员工（Danny）也能分配
+    const canAssign = true; // 所有员工都能把步骤分配给别人（能看到这张 DO 就能分配）
     return (
       <div key={o.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>

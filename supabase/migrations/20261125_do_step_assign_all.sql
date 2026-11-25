@@ -1,5 +1,5 @@
 -- ============================================================
--- 可查看全部 DO 的员工（Danny）也可以分配 DO 步骤负责人  (2026-11-25)
+-- 所有员工都可以分配 DO 步骤负责人（能看到这张 DO 就能分配）  (2026-11-25)
 -- 在 Supabase → SQL Editor 里整段运行一次即可（可重复运行）
 -- 前提：已运行 20261125_do_step_assignee.sql
 -- ============================================================
@@ -17,8 +17,7 @@ begin
     from do_steps s join do_orders o on o.id = s.order_id
    where s.id = p_step;
   if v_order is null then raise exception 'step not found'; end if;
-  if not (public.is_admin() or public.is_manager() or public.sees_all_do()
-          or v_owner = public.my_employee_id()) then
+  if not public.can_see_do(v_order) then
     raise exception 'no permission';
   end if;
   if p_to is not null and not exists (select 1 from employees where id = p_to) then
