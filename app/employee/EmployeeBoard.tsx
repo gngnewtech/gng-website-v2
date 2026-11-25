@@ -403,7 +403,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
     }
   };
 
-  const openTransfer = (task: Task) => { setTransferTask(task); setTransferTo(transferTargets[0]?.id ?? ""); };
+  const openTransfer = (task: Task) => { setTransferTask(task); setTransferTo(transferTargets.find((x) => x.id !== task.assignee_id)?.id ?? ""); };
   const doTransfer = async () => {
     const task = transferTask;
     if (!task || !transferTo) return;
@@ -478,6 +478,8 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
               <>
                 <span style={assigneeTagStyle}>→ {staffMap[x.assignee_id] || "?"}</span>
                 <span style={x.acknowledged ? ackDoneStyle : ackPendStyle}>{x.acknowledged ? t.confirmed : t.pendingAck}</span>
+                {/* 自己派出去的子任务，也可以再转交给别人 */}
+                {x.state !== "done" && x.created_by === me.id && transferTargets.length > 0 && <button onClick={() => openTransfer(x)} style={transferBtnStyle}>{t.transfer}</button>}
               </>
             )}
           </div>
@@ -692,7 +694,7 @@ export default function EmployeeBoard({ me, tasks: initialTasks, staff, transfer
             <p style={{ fontSize: 15, fontWeight: 600, margin: "10px 0 14px", wordBreak: "break-word" }}>{transferTask.name}</p>
             <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 6px" }}>{t.transferTo}</p>
             <select value={transferTo} onChange={(e) => setTransferTo(e.target.value)} style={fieldStyle}>
-              {transferTargets.map((x) => (
+              {transferTargets.filter((x) => x.id !== transferTask.assignee_id).map((x) => (
                 <option key={x.id} value={x.id}>{x.name}{x.is_admin ? ` · ${t.adminTag}` : x.is_manager ? ` · ${t.managerTag}` : x.role ? ` · ${x.role}` : ""}</option>
               ))}
             </select>
