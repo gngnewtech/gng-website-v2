@@ -50,7 +50,7 @@ export default async function DoPage() {
 
   return (
     <DoBoard
-      me={{ id: me.id, name: me.name, isAdmin: !!me.is_admin, canManage }}
+      me={{ id: me.id, name: me.name, isAdmin: !!me.is_admin, canManage, canSeeAll: !!me.can_see_all_do }}
       email={user.email ?? ""}
       employees={employees?.length ? employees : [{ id: me.id, name: me.name, role: null }]}
       orders={orders ?? []}

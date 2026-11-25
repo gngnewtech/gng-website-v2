@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-type Me = { id: string; name: string; isAdmin: boolean; canManage: boolean };
+type Me = { id: string; name: string; isAdmin: boolean; canManage: boolean; canSeeAll?: boolean };
 type Emp = { id: string; name: string; role: string | null };
 type Order = { id: string; title: string; do_no: string | null; invoice_no: string | null; assignee_id: string; created_at: string; done_at: string | null };
 type DFile = { id: string; order_id: string; path: string; name: string; mime: string | null; size: number | null; uploaded_by: string | null; uploaded_by_name: string | null; created_at: string };
@@ -228,7 +228,7 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
     router.refresh();
   };
 
-  // 分配某一步的负责人：管理员 / 经理 / DO 单负责人可以分配
+  // 分配某一步的负责人：管理员 / 经理 / 可查看全部 DO 的员工 / DO 单负责人可以分配
   const assignStep = async (s: Step, toId: string) => {
     const backup = steps;
     setSteps((prev) => prev.map((x) => (x.id === s.id ? { ...x, assignee_id: toId || null } : x)));
@@ -267,7 +267,7 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
     const n = l.filter((s) => s.done_at).length;
     const nextId = l.find((s) => !s.done_at)?.id;
     const finished = l.length > 0 && n === l.length;
-    const canAssign = me.canManage || o.assignee_id === me.id;
+    const canAssign = me.canManage || !!me.canSeeAll || o.assignee_id === me.id; // 可查看全部 DO 的员工（Danny）也能分配
     return (
       <div key={o.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
