@@ -145,20 +145,22 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   const myName = employees.find((e) => e.id === meId)?.name ?? null;
   const doToggleStep = async (st: DoStep) => {
     const next = !st.done_at;
-    if (!next && !confirm(`取消「${st.name}」这一步？`)) return;
+    const dt = DO_T[doLangNow()]; const stName = doStepName(st.name, doLangNow());
+    if (!next && !confirm(dt.undoConfirm(stName))) return;
     const backup = doSteps;
     setDoSteps((prev) => prev.map((x) => (x.id === st.id ? { ...x, done_at: next ? new Date().toISOString() : null, done_by_name: next ? myName : null } : x)));
     const res = await fetch("/api/do", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "toggleStep", step_id: st.id, done: next }) });
-    if (!res.ok) { setDoSteps(backup); const d = await res.json().catch(() => ({} as any)); showToast(d?.error || "操作失败"); return; }
+    if (!res.ok) { setDoSteps(backup); const d = await res.json().catch(() => ({} as any)); showToast(d?.error || dt.opFail); return; }
     router.refresh();
   };
   // 分配 DO 某一步的负责人（toId 为空 = 取消分配）
   const doAssignStep = async (st: DoStep, toId: string | null) => {
+    const dt = DO_T[doLangNow()]; const stName = doStepName(st.name, doLangNow());
     const backup = doSteps;
     setDoSteps((prev) => prev.map((x) => (x.id === st.id ? { ...x, assignee_id: toId } : x)));
     const res = await fetch("/api/do", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "assignStep", step_id: st.id, to_assignee_id: toId }) });
-    if (!res.ok) { setDoSteps(backup); const d = await res.json().catch(() => ({} as any)); showToast(d?.error || "分配失败"); return; }
-    showToast(toId ? `「${st.name}」已分配给 ${employees.find((e) => e.id === toId)?.name ?? ""}` : `「${st.name}」已取消分配`);
+    if (!res.ok) { setDoSteps(backup); const d = await res.json().catch(() => ({} as any)); showToast(d?.error || dt.assignFail); return; }
+    showToast(toId ? dt.assigned(stName, employees.find((e) => e.id === toId)?.name ?? "") : dt.unassigned(stName));
     router.refresh();
   };
   const [tasks, setTasks] = useState<Task[]>(tasksProp);
@@ -648,8 +650,52 @@ function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], steps
   );
 }
 
+// —— DO 栏中英文（跟登录时选的语言一致：localStorage gng_lang）——
+type DoLang = "zh" | "en";
+function useDoLang(): DoLang {
+  const [lang, setLang] = useState<DoLang>("zh");
+  useEffect(() => {
+    let saved: string | null = null;
+    try { saved = localStorage.getItem("gng_lang"); } catch {}
+    if (saved === "zh" || saved === "en") { setLang(saved); return; }
+    const l = (navigator.language || "zh").toLowerCase();
+    setLang(l.startsWith("zh") ? "zh" : "en");
+  }, []);
+  return lang;
+}
+const DO_STEP_EN: Record<string, string> = {
+  "DO": "DO", "DO BACK": "DO BACK", "递交发票": "Submit Invoice", "收款": "Payment Received",
+  "采购": "Purchase", "付款": "Payment", "完成": "Done",
+};
+const doStepName = (name: string, lang: DoLang) => (lang === "en" ? DO_STEP_EN[name] ?? name : name);
+const DO_T = {
+  zh: {
+    title: "DO 单", flow: "DO 流程 →", all: "全部", only: (n: string) => `只看 ${n}`,
+    hint: "点步骤格子：分配给谁 / 标记完成 · 蓝框是下一步 · 橙色名字是当前员工负责的",
+    noActive: "没有进行中的 DO", completed: "已完成", collapse: "收起", expand: "展开",
+    invoice: "发票", attachments: "📎 附件", openFail: "打开失败", clickTip: "点击分配 / 标记完成",
+    assignTo: (s: string) => `「${s}」分配给谁？`, unassign: "不分配", markDone: "✓ 标记完成", undoDone: "取消完成", close: "关闭",
+    undoConfirm: (s: string) => `取消「${s}」这一步？`, opFail: "操作失败", assignFail: "分配失败",
+    assigned: (s: string, n: string) => `「${s}」已分配给 ${n}`, unassigned: (s: string) => `「${s}」已取消分配`,
+  },
+  en: {
+    title: "DOs", flow: "DO Flow →", all: "All", only: (n: string) => `Only ${n}`,
+    hint: "Tap a step: assign it / mark done · Blue box = next step · Orange name = this employee",
+    noActive: "No DOs in progress", completed: "Completed", collapse: "Hide", expand: "Show",
+    invoice: "Invoice", attachments: "📎 Attachments", openFail: "Could not open file", clickTip: "Tap to assign / mark done",
+    assignTo: (s: string) => `Assign "${s}" to whom?`, unassign: "Unassign", markDone: "✓ Mark done", undoDone: "Undo done", close: "Close",
+    undoConfirm: (s: string) => `Uncheck "${s}"?`, opFail: "Action failed", assignFail: "Assign failed",
+    assigned: (s: string, n: string) => `"${s}" assigned to ${n}`, unassigned: (s: string) => `"${s}" unassigned`,
+  },
+};
+const doLangNow = (): DoLang => {
+  try { const v = localStorage.getItem("gng_lang"); if (v === "zh" || v === "en") return v; } catch {}
+  return typeof navigator !== "undefined" && !(navigator.language || "zh").toLowerCase().startsWith("zh") ? "en" : "zh";
+};
+
 function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder, onToggle, onAssign }: { emp: Employee; orders: DoOrder[]; files?: DoFile[]; employees: Employee[]; stepsByOrder: Record<string, DoStep[]>; onToggle: (s: DoStep) => void; onAssign: (s: DoStep, toId: string | null) => void }) {
   const [doneOpen, setDoneOpen] = useState(false);
+  const lang = useDoLang(); const t = DO_T[lang];
   // 点步骤格子 → 弹出「分配给谁」（也可以在弹窗里标记完成）
   const [stepMenu, setStepMenu] = useState<{ step: DoStep; title: string } | null>(null);
   // 管理员 / 经理默认看全部 DO，可切换只看当前员工的
@@ -680,7 +726,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
   const openFile = async (f: DoFile) => {
     const w = window.open("", "_blank"); // 先同步开窗口，避免手机浏览器拦截
     const { data, error } = await sb.storage.from(DO_BUCKET).createSignedUrl(f.path, 600);
-    if (error || !data?.signedUrl) { w?.close(); alert("打开失败"); return; }
+    if (error || !data?.signedUrl) { w?.close(); alert(t.openFail); return; }
     if (w) w.location.href = data.signedUrl; else window.location.href = data.signedUrl;
   };
   // 已完成：7 步全勾，或最后一步「完成」已勾 → 跟已完成任务一样收到最下面
@@ -704,18 +750,18 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
         {(o.do_no || o.invoice_no) && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
             {o.do_no && <span style={doChip}>DO {o.do_no}</span>}
-            {o.invoice_no && <span style={doChip}>发票 {o.invoice_no}</span>}
+            {o.invoice_no && <span style={doChip}>{t.invoice} {o.invoice_no}</span>}
           </div>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6, marginTop: 10 }}>
           {steps.map((s, i) => {
             const on = !!s.done_at; const isNext = i === nextIdx;
             return (
-              <button key={s.id} onClick={() => setStepMenu({ step: s, title: o.title })} title={on ? `${s.done_by_name ?? ""} ${fmtT(s.done_at!)}` : "点击分配 / 标记完成"}
+              <button key={s.id} onClick={() => setStepMenu({ step: s, title: o.title })} title={on ? `${s.done_by_name ?? ""} ${fmtT(s.done_at!)}` : t.clickTip}
                 style={{ padding: "6px 4px", borderRadius: 6, cursor: "pointer", fontSize: 12, lineHeight: 1.3, textAlign: "center", minWidth: 0,
                   border: `${isNext ? 2 : 1}px solid ${on ? "#10b981" : isNext ? "#2563eb" : "#e2e8f0"}`,
                   background: on ? "#ecfdf5" : "#fff", color: on ? "#047857" : isNext ? "#1d4ed8" : "#94a3b8", fontWeight: on || isNext ? 600 : 400 }}>
-                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{on ? "✓ " : ""}{s.name}</div>
+                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{on ? "✓ " : ""}{doStepName(s.name, lang)}</div>
                 {on && <div style={{ fontSize: 10, fontWeight: 400, color: "#64748b", marginTop: 2, whiteSpace: "nowrap" }}>{fmtT(s.done_at!)}</div>}
                 {s.assignee_id && <div style={{ fontSize: 10, fontWeight: 600, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: s.assignee_id === emp.id ? "#b45309" : "#1d4ed8" }}>👤 {empName[s.assignee_id] ?? "?"}</div>}
               </button>
@@ -724,7 +770,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
         </div>
         {(filesOf[o.id] ?? []).length > 0 && (
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #e2e8f0" }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>📎 附件 {(filesOf[o.id] ?? []).length}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>{t.attachments} {(filesOf[o.id] ?? []).length}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {(filesOf[o.id] ?? []).map((f) => (
                 <button key={f.id} onClick={() => openFile(f)} title={`${f.name}\n${f.uploaded_by_name ?? ""} ${fmtT(f.created_at)}`}
@@ -750,26 +796,26 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
   return (
     <section style={{ minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 12px", minHeight: 38 }}>
-        <h4 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: 0 }}>DO 单</h4>
-        <a href="/admin/do" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>DO 流程 →</a>
+        <h4 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: 0 }}>{t.title}</h4>
+        <a href="/admin/do" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>{t.flow}</a>
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-        <button onClick={() => setOnlyEmp(false)} style={chipStyle(!onlyEmp, "#0f172a")}>全部 {allOrders.length}</button>
-        <button onClick={() => setOnlyEmp(true)} style={chipStyle(onlyEmp, "#0f172a")}>只看 {emp.name} {empCount}</button>
+        <button onClick={() => setOnlyEmp(false)} style={chipStyle(!onlyEmp, "#0f172a")}>{t.all} {allOrders.length}</button>
+        <button onClick={() => setOnlyEmp(true)} style={chipStyle(onlyEmp, "#0f172a")}>{t.only(emp.name)} {empCount}</button>
       </div>
-      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>点步骤格子：分配给谁 / 标记完成 · 蓝框是下一步 · 橙色名字是当前员工负责的</p>
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>{t.hint}</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {active.length === 0
-          ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 24, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>没有进行中的 DO</div>
+          ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 24, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>{t.noActive}</div>
           : active.map(card)}
       </div>
       {done.length > 0 && (
         <div style={{ marginTop: 16, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
           <button onClick={() => setDoneOpen((v) => !v)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
             <span style={{ fontSize: 12, color: "#64748b", width: 12, display: "inline-block", transform: doneOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▶</span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: "#047857" }}>已完成</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#047857" }}>{t.completed}</span>
             <span style={{ fontSize: 12, fontWeight: 600, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "1px 8px" }}>{done.length}</span>
-            <span style={{ marginLeft: "auto", fontSize: 12, color: "#94a3b8" }}>{doneOpen ? "收起" : "展开"}</span>
+            <span style={{ marginLeft: "auto", fontSize: 12, color: "#94a3b8" }}>{doneOpen ? t.collapse : t.expand}</span>
           </button>
           {doneOpen && <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 12px 12px" }}>{done.map(card)}</div>}
         </div>
@@ -781,7 +827,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
         return (
           <div style={overlay} onClick={() => setStepMenu(null)}>
             <div style={{ ...modal, maxHeight: "85vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>「{st.name}」分配给谁？</h3>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{t.assignTo(doStepName(st.name, lang))}</h3>
               <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 16px", wordBreak: "break-word" }}>{stepMenu.title}</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {employees.map((e) => {
@@ -796,12 +842,12 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
                   );
                 })}
                 {st.assignee_id && (
-                  <button onClick={() => pick(null)} style={{ padding: "10px 12px", borderRadius: 8, cursor: "pointer", fontSize: 14, border: "1px dashed #cbd5e1", background: "#fff", color: "#64748b" }}>不分配</button>
+                  <button onClick={() => pick(null)} style={{ padding: "10px 12px", borderRadius: 8, cursor: "pointer", fontSize: 14, border: "1px dashed #cbd5e1", background: "#fff", color: "#64748b" }}>{t.unassign}</button>
                 )}
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "space-between" }}>
-                <button onClick={() => { setStepMenu(null); onToggle(st); }} style={on ? btnGhost : { ...btnGhost, borderColor: "#10b981", color: "#047857" }}>{on ? "取消完成" : "✓ 标记完成"}</button>
-                <button onClick={() => setStepMenu(null)} style={btnGhost}>关闭</button>
+                <button onClick={() => { setStepMenu(null); onToggle(st); }} style={on ? btnGhost : { ...btnGhost, borderColor: "#10b981", color: "#047857" }}>{on ? t.undoDone : t.markDone}</button>
+                <button onClick={() => setStepMenu(null)} style={btnGhost}>{t.close}</button>
               </div>
             </div>
           </div>
