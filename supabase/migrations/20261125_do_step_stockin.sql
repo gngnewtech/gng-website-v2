@@ -2,9 +2,8 @@
 -- 在 Supabase → SQL Editor 整段运行一次（可重复运行）
 begin;
 
--- 1. 步骤号允许到 8
+-- 1. 先去掉步骤号范围限制（挪号时临时用到 100+），最后再加回 1~8
 alter table public.do_steps drop constraint if exists do_steps_step_no_check;
-alter table public.do_steps add constraint do_steps_step_no_check check (step_no between 1 and 8);
 
 -- 2. 已有的 DO 单：付款 6→7、完成 7→8，再插入 入库 = 6（只处理还没有「入库」的单子）
 --    先挪到 100+ 避免 (order_id, step_no) 唯一约束冲突
@@ -16,6 +15,9 @@ update public.do_steps set step_no = case name when '付款' then 7 when '完成
 insert into public.do_steps (order_id, step_no, name)
 select o.id, 6, '入库' from public.do_orders o
  where not exists (select 1 from public.do_steps x where x.order_id = o.id and x.name = '入库');
+
+-- 步骤号范围改为 1~8
+alter table public.do_steps add constraint do_steps_step_no_check check (step_no between 1 and 8);
 
 -- 3. 新建 DO 单自动生成 8 步
 create or replace function public.create_do_order(
