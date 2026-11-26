@@ -4,11 +4,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { mergeDoPdf, pickMergeFiles } from "@/lib/mergeDoPdf";
 
 type Me = { id: string; name: string; isAdmin: boolean; canManage: boolean; canSeeAll?: boolean };
 type Emp = { id: string; name: string; role: string | null };
 type Order = { id: string; title: string; do_no: string | null; invoice_no: string | null; assignee_id: string; created_at: string; done_at: string | null };
-type DFile = { id: string; order_id: string; path: string; name: string; mime: string | null; size: number | null; uploaded_by: string | null; uploaded_by_name: string | null; created_at: string };
+type DFile = { id: string; order_id: string; path: string; name: string; mime: string | null; size: number | null; uploaded_by: string | null; uploaded_by_name: string | null; created_at: string; step_id?: string | null };
 const BUCKET = "do-files";
 const MAX_MB = 10;
 const isImg = (f: { mime: string | null; name: string }) => (f.mime ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(f.name);
@@ -29,7 +30,7 @@ const T = {
     search: "搜索 标题 / DO 号 / 发票号 / 负责人…", notFound: "没有找到", noActive: "没有进行中的 DO",
     completed: "已完成", collapse: "收起", expand: "展开",
     invoice: "发票", edit: "编辑", delete: "删除", clickToDone: "点击标记完成",
-    attachments: "📎 附件", uploading: "上传中…", addFile: "+ 截图 / PDF", deleteFileAria: "删除附件",
+    attachments: "📎 附件", uploading: "上传中…", addFile: "+ 截图 / PDF", mergePdf: "⤓ 合并 PDF", merging: "合并中…", mergeTip: "签字 DO + 发票 合成一个 PDF 下载", mergeFail: "合并失败：", deleteFileAria: "删除附件",
     editDo: "编辑 DO", newDoTitle: "新建 DO", fTitle: "标题（客户 / 项目）", fTitlePh: "例如：ABC Trading 太阳能板",
     fDoNo: "DO 号", optional: "可选", fInvoice: "发票号", fInvoicePh: "可选，递交发票时再填也行", fAssignee: "负责人",
     cancel: "取消", saving: "保存中…", save: "保存", create: "新建",
@@ -47,7 +48,7 @@ const T = {
     search: "Search title / DO no. / invoice no. / assignee…", notFound: "No results", noActive: "No DOs in progress",
     completed: "Completed", collapse: "Hide", expand: "Show",
     invoice: "Invoice", edit: "Edit", delete: "Delete", clickToDone: "Tap to mark done",
-    attachments: "📎 Attachments", uploading: "Uploading…", addFile: "+ Photo / PDF", deleteFileAria: "Delete attachment",
+    attachments: "📎 Attachments", uploading: "Uploading…", addFile: "+ Photo / PDF", mergePdf: "⤓ Merge PDF", merging: "Merging…", mergeTip: "Signed DO + invoice as one PDF", mergeFail: "Merge failed: ", deleteFileAria: "Delete attachment",
     editDo: "Edit DO", newDoTitle: "New DO", fTitle: "Title (customer / project)", fTitlePh: "e.g. ABC Trading solar panels",
     fDoNo: "DO No.", optional: "Optional", fInvoice: "Invoice No.", fInvoicePh: "Optional — can be filled in when submitting the invoice", fAssignee: "Assignee",
     cancel: "Cancel", saving: "Saving…", save: "Save", create: "Create",
@@ -207,6 +208,17 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
     if (okCount) showToast(t.uploaded(okCount));
   };
 
+  // 签字 DO + 发票 合成一个 PDF
+  const [merging, setMerging] = useState<string | null>(null);
+  const mergeOrder = async (o: Order) => {
+    const list = pickMergeFiles(o.id, files, stepsOf[o.id] ?? []);
+    if (!list.length) return;
+    setMerging(o.id);
+    try { await mergeDoPdf(sb, list, o.do_no || o.title); }
+    catch (e: any) { showToast(`${t.mergeFail}${e?.message ?? ""}`); }
+    finally { setMerging(null); }
+  };
+
   const openFile = async (f: DFile) => {
     const w = window.open("", "_blank"); // 先同步开窗口，避免手机浏览器拦截
     const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(f.path, 600);
@@ -335,7 +347,13 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: fl.length ? 8 : 0 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>{t.attachments}</span>
                 {fl.length > 0 && <span style={{ fontSize: 12, color: "#64748b" }}>{fl.length}</span>}
-                <label style={{ ...actBtn(), marginLeft: "auto", opacity: busyUp ? 0.5 : 1, cursor: busyUp ? "default" : "pointer" }}>
+                {fl.length > 0 && (
+                  <button onClick={() => mergeOrder(o)} disabled={merging === o.id} title={t.mergeTip}
+                    style={{ ...actBtn(), marginLeft: "auto", opacity: merging === o.id ? 0.5 : 1, cursor: merging === o.id ? "default" : "pointer" }}>
+                    {merging === o.id ? t.merging : t.mergePdf}
+                  </button>
+                )}
+                <label style={{ ...actBtn(), marginLeft: fl.length > 0 ? 0 : "auto", opacity: busyUp ? 0.5 : 1, cursor: busyUp ? "default" : "pointer" }}>
                   {busyUp ? t.uploading : t.addFile}
                   <input type="file" accept="image/*,application/pdf" multiple disabled={busyUp} style={{ display: "none" }}
                     onChange={(e) => { const l = e.target.files; upload(o, l); e.target.value = ""; }} />

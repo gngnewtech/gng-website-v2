@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import NoteThread, { type TaskNote } from "../_shared/NoteThread";
 import { createClient } from "@/lib/supabase/client";
+import { mergeDoPdf, pickMergeFiles } from "@/lib/mergeDoPdf";
 
 const NOTE_LABELS = { placeholder: "写进一步的进展或消息…", add: "添加跟进", adding: "保存中…", cancel: "取消", delete: "删除", confirmDelete: "删除这条跟进？", unknownAuthor: "（原备注）" };
 
@@ -694,7 +695,7 @@ const DO_T = {
     title: "DO 单", flow: "DO 流程 →", all: "全部", only: (n: string) => `只看 ${n}`,
     hint: "点步骤格子：分配给谁 / 标记完成 · 蓝框是下一步 · 橙色名字是当前员工负责的",
     noActive: "没有进行中的 DO", completed: "已完成", collapse: "收起", expand: "展开",
-    invoice: "发票", attachments: "📎 附件", openFail: "打开失败", addFile: "+ 截图 / PDF", uploading: "上传中…",
+    invoice: "发票", attachments: "📎 附件", openFail: "打开失败", mergePdf: "⤓ 合并 PDF", merging: "合并中…", mergeTip: "签字 DO + 发票 合成一个 PDF 下载", mergeFail: "合并失败：", addFile: "+ 截图 / PDF", uploading: "上传中…",
     onlyImgPdf: "只能上传图片或 PDF：", tooBig: (mb: number) => `文件超过 ${mb}MB：`, uploadFail: "上传失败：", saveFail: "保存失败：", clickTip: "点击分配 / 标记完成",
     assignTo: (s: string) => `「${s}」分配给谁？`, unassign: "不分配", markDone: "✓ 标记完成", undoDone: "取消完成", close: "关闭",
     undoConfirm: (s: string) => `取消「${s}」这一步？`, opFail: "操作失败", assignFail: "分配失败",
@@ -704,7 +705,7 @@ const DO_T = {
     title: "DOs", flow: "DO Flow →", all: "All", only: (n: string) => `Only ${n}`,
     hint: "Tap a step: assign it / mark done · Blue box = next step · Orange name = this employee",
     noActive: "No DOs in progress", completed: "Completed", collapse: "Hide", expand: "Show",
-    invoice: "Invoice", attachments: "📎 Attachments", openFail: "Could not open file", addFile: "+ Photo / PDF", uploading: "Uploading…",
+    invoice: "Invoice", attachments: "📎 Attachments", openFail: "Could not open file", mergePdf: "⤓ Merge PDF", merging: "Merging…", mergeTip: "Signed DO + invoice as one PDF", mergeFail: "Merge failed: ", addFile: "+ Photo / PDF", uploading: "Uploading…",
     onlyImgPdf: "Only images or PDF allowed: ", tooBig: (mb: number) => `File larger than ${mb}MB: `, uploadFail: "Upload failed: ", saveFail: "Save failed: ", clickTip: "Tap to assign / mark done",
     assignTo: (s: string) => `Assign "${s}" to whom?`, unassign: "Unassign", markDone: "✓ Mark done", undoDone: "Undo done", close: "Close",
     undoConfirm: (s: string) => `Uncheck "${s}"?`, opFail: "Action failed", assignFail: "Assign failed",
@@ -796,6 +797,16 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
   const active = orders.filter((o) => !isDone(o)).sort(byDoDate);
   const done = orders.filter(isDone).sort(byDoDate);
   const fmtT = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+  // 签字 DO + 发票 合成一个 PDF
+  const [merging, setMerging] = useState<string | null>(null);
+  const mergeOrder = async (o: DoOrder) => {
+    const list = pickMergeFiles(o.id, allFiles, stepsByOrder[o.id] ?? []);
+    if (!list.length) return;
+    setMerging(o.id);
+    try { await mergeDoPdf(sb, list, o.do_no || o.title); }
+    catch (e: any) { alert(`${t.mergeFail}${e?.message ?? ""}`); }
+    finally { setMerging(null); }
+  };
   const card = (o: DoOrder) => {
     const steps = stepsByOrder[o.id] ?? [];
     const nextIdx = steps.findIndex((s) => !s.done_at);
@@ -806,6 +817,12 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
           <span style={{ flex: 1, minWidth: 120, fontWeight: 600, color: "#0f172a", wordBreak: "break-word" }}>{o.title}</span>
           <span style={{ fontSize: 12, padding: "1px 8px", borderRadius: 999, flex: "none", border: `1px solid ${o.assignee_id === emp.id ? "#f59e0b" : "#e2e8f0"}`, background: o.assignee_id === emp.id ? "#fffbeb" : "#f8fafc", color: o.assignee_id === emp.id ? "#b45309" : "#64748b" }}>{empName[o.assignee_id] ?? "—"}</span>
           <span style={{ fontSize: 12, color: "#64748b", flex: "none" }}>{doneCount}/{steps.length}</span>
+          {allFiles.some((f) => f.order_id === o.id) && (
+            <button onClick={() => mergeOrder(o)} disabled={merging === o.id} title={t.mergeTip}
+              style={{ fontSize: 12, padding: "2px 10px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#fff", color: "#334155", whiteSpace: "nowrap", flex: "none", opacity: merging === o.id ? 0.5 : 1, cursor: merging === o.id ? "default" : "pointer" }}>
+              {merging === o.id ? t.merging : t.mergePdf}
+            </button>
+          )}
         </div>
         {(o.do_no || o.invoice_no) && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>

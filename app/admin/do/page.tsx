@@ -43,7 +43,7 @@ export default async function DoPage() {
   const { data: files } = ids.length
     ? await supabase
         .from("do_files")
-        .select("id, order_id, path, name, mime, size, uploaded_by, uploaded_by_name, created_at")
+        .select("*") // 含 step_id：合并 PDF 时按步骤挑「签字 DO」「发票」
         .in("order_id", ids)
         .order("created_at", { ascending: true })
     : { data: [] };
