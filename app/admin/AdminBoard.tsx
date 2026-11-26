@@ -316,7 +316,7 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: 'system-ui,-apple-system,"PingFang SC",sans-serif', color: "#1e293b" }}>
       <style>{`
-        .ab-dosteps { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+        .ab-dosteps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
         @media (max-width: 600px) { .ab-dosteps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
         .ab-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
         @media (max-width: 1100px) { .ab-cols { grid-template-columns: minmax(0, 1fr); } }
@@ -797,7 +797,8 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
   };
   // 已完成：7 步全勾，或最后一步「完成」已勾 → 跟已完成任务一样收到最下面
   const finishStep = (o: DoOrder) => (stepsByOrder[o.id] ?? []).find((s) => s.name === "完成");
-  const isDone = (o: DoOrder) => { const l = stepsByOrder[o.id] ?? []; return l.length > 0 && (l.every((s) => s.done_at) || !!finishStep(o)?.done_at); };
+  // 「完成」这一格不再显示：前面 7 步全部完成就算完成（以前手动勾过「完成」的单子也算）
+  const isDone = (o: DoOrder) => { const l = (stepsByOrder[o.id] ?? []).filter((s) => s.name !== "完成"); return l.length > 0 && (l.every((s) => s.done_at) || !!finishStep(o)?.done_at); };
   const active = orders.filter((o) => !isDone(o)).sort(byDoDate);
   const done = orders.filter(isDone).sort(byDoDate);
   const fmtT = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
@@ -812,7 +813,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
     finally { setMerging(null); }
   };
   const card = (o: DoOrder) => {
-    const steps = stepsByOrder[o.id] ?? [];
+    const steps = (stepsByOrder[o.id] ?? []).filter((s) => s.name !== "完成"); // 不显示「完成」格子
     const nextIdx = steps.findIndex((s) => !s.done_at);
     const doneCount = steps.filter((s) => s.done_at).length;
     return (

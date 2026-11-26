@@ -91,7 +91,7 @@ const CSS = `
 .do-tile { position: relative; width: 76px; height: 76px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc; overflow: hidden; cursor: pointer; flex: none; padding: 0; }
 .do-tile:hover { border-color: #94a3b8; }
 .do-tile .x { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 999px; border: none; background: rgba(15,23,42,.65); color: #fff; font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; padding: 0; }
-.do-steps { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.do-steps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 @media (max-width: 720px) {
   .do-main { padding: 16px !important; }
   .do-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -242,7 +242,8 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
   const visible = orders.filter((o) => !q || [o.title, o.do_no, o.invoice_no, empName[o.assignee_id]].some((v) => (v ?? "").toLowerCase().includes(q)));
   // 已完成：7 步全勾，或最后一步「完成」已勾 → 跟已完成任务一样收到最下面
   const finishStep = (o: Order) => (stepsOf[o.id] ?? []).find((s) => s.name === "完成");
-  const isDone = (o: Order) => { const l = stepsOf[o.id] ?? []; return l.length > 0 && (l.every((s) => s.done_at) || !!finishStep(o)?.done_at); };
+  // 「完成」这一格不再显示：前面 7 步全部完成就算完成（以前手动勾过「完成」的单子也算）
+  const isDone = (o: Order) => { const l = (stepsOf[o.id] ?? []).filter((s) => s.name !== "完成"); return l.length > 0 && (l.every((s) => s.done_at) || !!finishStep(o)?.done_at); };
   const active = visible.filter((o) => !isDone(o)).sort(byDoDate);
   const done = visible.filter(isDone).sort(byDoDate);
 
@@ -291,10 +292,10 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
   const logout = async () => { await fetch("/api/logout", { method: "POST" }); router.push("/login"); router.refresh(); };
 
   const card = (o: Order) => {
-    const l = stepsOf[o.id] ?? [];
+    const l = (stepsOf[o.id] ?? []).filter((s) => s.name !== "完成"); // 不显示「完成」格子
     const n = l.filter((s) => s.done_at).length;
     const nextId = l.find((s) => !s.done_at)?.id;
-    const finished = l.length > 0 && n === l.length;
+    const finished = isDone(o);
     const canAssign = true; // 所有员工都能把步骤分配给别人（能看到这张 DO 就能分配）
     return (
       <div key={o.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
