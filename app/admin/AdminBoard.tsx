@@ -516,13 +516,16 @@ function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], steps
       <div key={t.id} style={today
         ? { background: "#fffbeb", border: "2px solid #f59e0b", borderLeft: "6px solid #f59e0b", borderRadius: 8, overflow: "hidden", boxShadow: "0 4px 14px rgba(245,158,11,.25)" }
         : { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
-        <div className="ab-trow" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", flexWrap: "wrap" }}>
+        <div className="ab-trow" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px 8px", flexWrap: "wrap" }}>
           <StartBadge t={t} />
           <button onClick={() => (editingStart === t.id ? setEditingStart(null) : openStart(t))} style={{ fontSize: 13, padding: "3px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${t.start_at ? "#0369a1" : "#cbd5e1"}`, background: t.start_at ? "#0369a1" : "#fff", color: t.start_at ? "#fff" : "#475569", flex: "none" }}>日期</button>
           <button onClick={() => onSetPriority(t, !t.important, t.urgent)} style={chipStyle(t.important, "#1d4ed8")}>重要</button>
           <button onClick={() => onSetPriority(t, t.important, !t.urgent)} style={chipStyle(t.urgent, "#be123c")}>紧急</button>
           <PrivateBadge t={t} />
           <span className="ab-tname" style={{ flex: 1, minWidth: 120, textDecoration: t.state === "done" ? "line-through" : "none", color: t.state === "done" ? "#94a3b8" : today ? "#0f172a" : "#334155", fontWeight: today ? 700 : 400 }}>{t.name}</span>
+        </div>
+        {/* 第二行：操作按钮 */}
+        <div className="ab-tacts" style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px", flexWrap: "wrap" }}>
           <button onClick={() => setEditingNote(editing ? null : t.id)} style={tNotes.length ? { ...actBtn("#fff", "#0f172a"), background: "#0f172a" } : actBtn()}>{tNotes.length ? "跟进 ●" : "跟进"}</button>
           <button onClick={() => onEdit(t)} style={actBtn()}>编辑</button>
           <button onClick={() => onSubtask(t)} style={actBtn("#2563eb", "#bfdbfe")}>子任务</button>
