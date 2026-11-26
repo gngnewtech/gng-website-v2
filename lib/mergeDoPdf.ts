@@ -10,14 +10,14 @@ const INVOICE_STEPS = ["递交发票"]; // 发票
 
 const isPdf = (f: MFile) => f.mime === "application/pdf" || /\.pdf$/i.test(f.name);
 
-// 选要合并的文件：先签字 DO，再发票；这两步都没附件时，退回到这张单的全部附件（按步骤顺序）
+// 选要合并的文件：先发票（TI），再签字 DO（DO BACK）；这两步都没附件时，退回到这张单的全部附件（按步骤顺序）
 export function pickMergeFiles(orderId: string, files: MFile[], steps: MStep[]): MFile[] {
   const mine = files.filter((f) => f.order_id === orderId);
   const byName = (names: string[]) => {
     const ids = new Set(steps.filter((s) => names.includes(s.name)).map((s) => s.id));
     return mine.filter((f) => f.step_id && ids.has(f.step_id)).sort((a, b) => a.created_at.localeCompare(b.created_at));
   };
-  const picked = [...byName(SIGNED_STEPS), ...byName(INVOICE_STEPS)];
+  const picked = [...byName(INVOICE_STEPS), ...byName(SIGNED_STEPS)];
   if (picked.length) return picked;
   const stepNo: Record<string, number> = Object.fromEntries(steps.map((s) => [s.id, s.step_no]));
   const no = (f: MFile) => (f.step_id && stepNo[f.step_id] != null ? stepNo[f.step_id] : 99);
