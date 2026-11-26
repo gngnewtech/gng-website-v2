@@ -85,7 +85,9 @@ export async function mergeDoPdf(sb: any, files: MFile[], baseName: string): Pro
   }
 
   const pdf = await out.save();
-  const name = `${baseName.replace(/[\\/:*?"<>|]+/g, "_").trim() || "DO"}.pdf`;
+  // 文件名：DO-EL-HAOHU-261125-1 → TI-EL-HAOHU-261125-1 WITH DO.pdf
+  const clean = baseName.replace(/[\\/:*?"<>|]+/g, "_").trim() || "DO";
+  const name = `${clean.replace(/^DO(?=[-_ ])/i, "TI")} WITH DO.pdf`;
   const url = URL.createObjectURL(new Blob([pdf as BlobPart], { type: "application/pdf" }));
   const a = document.createElement("a");
   a.href = url; a.download = name;
