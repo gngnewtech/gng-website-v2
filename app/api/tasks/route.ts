@@ -2,8 +2,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// 重复规则：每天 / 每周 / 每月；其他值视为不重复
-const RECURS = ["daily", "weekly", "monthly"];
+// 重复规则：每天 / 每周 / 每月 / 每3个月；其他值视为不重复
+const RECURS = ["daily", "weekly", "monthly", "quarterly"];
 const cleanRecur = (v: any) => (RECURS.includes(v) ? v : null);
 
 async function getContext() {

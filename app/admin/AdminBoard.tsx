@@ -40,10 +40,10 @@ const META: Record<Status, { label: string; color: string; bg: string; bar: stri
 };
 const TASK_LABEL: Record<TaskState, string> = { todo: "待开始", doing: "进行中", done: "已完成" };
 // —— 重复规则 ——
-type Recur = "daily" | "weekly" | "monthly";
-const RECUR_LABEL: Record<Recur, string> = { daily: "每天", weekly: "每周", monthly: "每月" };
+type Recur = "daily" | "weekly" | "monthly" | "quarterly";
+const RECUR_LABEL: Record<Recur, string> = { daily: "每天", weekly: "每周", monthly: "每月", quarterly: "每3个月" };
 const RECUR_OPTIONS: { v: Recur | ""; label: string }[] = [
-  { v: "", label: "不重复" }, { v: "daily", label: "每天" }, { v: "weekly", label: "每周" }, { v: "monthly", label: "每月" },
+  { v: "", label: "不重复" }, { v: "daily", label: "每天" }, { v: "weekly", label: "每周" }, { v: "monthly", label: "每月" }, { v: "quarterly", label: "每3个月" },
 ];
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const dayKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -611,7 +611,7 @@ function Detail({ emp, tasks, doOrders = [], doFiles = [], employees = [], steps
           <button onClick={onAssignHere} style={btnPrimary}>+ 给 {emp.name} 派任务</button>
         </div>
       </div>
-      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>今天的任务置顶并以橙色突出 · 点状态字切换进度（已完成再点复制新任务）· 点「日期」可设每天/每周/每月重复，完成后自动生成下一次 · 点「重要」「紧急」调优先级</p>
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 12px" }}>今天的任务置顶并以橙色突出 · 点状态字切换进度（已完成再点复制新任务）· 点「日期」可设每天/每周/每月/每3个月重复，完成后自动生成下一次 · 点「重要」「紧急」调优先级</p>
       {sorted.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 32, background: "#fff", border: "1px dashed #e2e8f0", borderRadius: 8 }}>还没有任务</div> : (
         <>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
