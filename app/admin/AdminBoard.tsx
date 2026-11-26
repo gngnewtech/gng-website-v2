@@ -835,6 +835,8 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
             const on = !!s.done_at; const isNext = i === nextIdx;
             const sf = stepFilesOf[s.id] ?? [];
             const busyStep = uploading === s.id;
+            // 只有 DO BACK（签字 DO）和 递交发票 这两步要附件；其他步骤不显示上传，已有的旧附件照常显示
+            const canAttach = s.name === "DO BACK" || s.name === "递交发票";
             return (
               <div key={s.id} role="button" onClick={() => setStepMenu({ step: s, title: o.title })} title={on ? `${s.done_by_name ?? ""} ${fmtT(s.done_at!)}` : t.clickTip}
                 style={{ padding: "6px 4px", borderRadius: 6, cursor: "pointer", fontSize: 12, lineHeight: 1.3, textAlign: "center", minWidth: 0, display: "flex", flexDirection: "column", alignItems: "stretch",
@@ -844,6 +846,7 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
                 {on && <div style={{ fontSize: 10, fontWeight: 400, color: "#64748b", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fmtT(s.done_at!)}</div>}
                 {s.assignee_id && <div style={{ fontSize: 10, fontWeight: 600, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: s.assignee_id === emp.id ? "#b45309" : "#1d4ed8" }}>👤 {empName[s.assignee_id] ?? "?"}</div>}
                 {/* 这一步的附件 */}
+                {(canAttach || sf.length > 0) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 3, justifyContent: "center", marginTop: 5 }}>
                   {sf.map((f) => (
                     <button key={f.id} onClick={(e) => { e.stopPropagation(); openFile(f); }} title={`${f.name}\n${f.uploaded_by_name ?? ""} ${fmtT(f.created_at)}`}
@@ -855,13 +858,16 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
                         : <span style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#dc2626", background: "#fef2f2" }}>PDF</span>}
                     </button>
                   ))}
+                  {canAttach && (
                   <label onClick={(e) => e.stopPropagation()} title={t.addFile}
                     style={{ width: 26, height: 26, borderRadius: 4, border: "1px dashed #cbd5e1", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 400, display: "flex", alignItems: "center", justifyContent: "center", flex: "none", opacity: busyStep ? 0.5 : 1, cursor: busyStep ? "default" : "pointer" }}>
                     {busyStep ? "…" : "📎"}
                     <input type="file" accept="image/*,application/pdf" multiple disabled={busyStep} style={{ display: "none" }}
                       onChange={(e) => { const l = e.target.files; upload(o, l, s.id); e.target.value = ""; }} />
                   </label>
+                  )}
                 </div>
+                )}
               </div>
             );
           })}
