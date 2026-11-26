@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import NoteThread, { type TaskNote } from "../_shared/NoteThread";
 import { createClient } from "@/lib/supabase/client";
 import { mergeDoPdf, pickMergeFiles } from "@/lib/mergeDoPdf";
+import { photosToPdf } from "@/lib/photoToPdf";
 
 const NOTE_LABELS = { placeholder: "写进一步的进展或消息…", add: "添加跟进", adding: "保存中…", cancel: "取消", delete: "删除", confirmDelete: "删除这条跟进？", unknownAuthor: "（原备注）" };
 
@@ -749,12 +750,15 @@ function DoColumn({ emp, orders: allOrders, files = [], employees, stepsByOrder,
   // 规则跟 DO 流程页一样：图片 / PDF，单个 ≤10MB，能看到这张 DO 的人都能传（数据库权限把关）
   const upload = async (o: DoOrder, list: FileList | null, stepId: string | null = null) => {
     if (!list || !list.length) return;
-    const picked = Array.from(list);
-    const bad = picked.find((f) => !(f.type.startsWith("image/") || f.type === "application/pdf" || /\.(pdf|png|jpe?g|webp|gif|heic|heif)$/i.test(f.name)));
+    const raw = Array.from(list);
+    const bad = raw.find((f) => !(f.type.startsWith("image/") || f.type === "application/pdf" || /\.(pdf|png|jpe?g|webp|gif|heic|heif)$/i.test(f.name)));
     if (bad) { alert(`${t.onlyImgPdf}${bad.name}`); return; }
-    const big = picked.find((f) => f.size > DO_MAX_MB * 1024 * 1024);
-    if (big) { alert(`${t.tooBig(DO_MAX_MB)}${big.name}`); return; }
     setUploading(stepId ?? o.id);
+    // 照片自动转成 PDF（一次选的几张合成一个），文件名：DO 号 + 步骤名
+    const stName = stepId ? (stepsByOrder[o.id] ?? []).find((x) => x.id === stepId)?.name ?? "" : "";
+    const picked = await photosToPdf(raw, `${o.do_no || o.title}${stName ? ` ${stName}` : ""}`);
+    const big = picked.find((f) => f.size > DO_MAX_MB * 1024 * 1024);
+    if (big) { setUploading(null); alert(`${t.tooBig(DO_MAX_MB)}${big.name}`); return; }
     for (const f of picked) {
       const ext = (f.name.match(/\.([a-z0-9]+)$/i)?.[1] ?? (f.type === "application/pdf" ? "pdf" : "png")).toLowerCase();
       const path = `${o.id}/${crypto.randomUUID()}.${ext}`;

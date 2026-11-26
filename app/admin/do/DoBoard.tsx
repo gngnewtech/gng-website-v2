@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { mergeDoPdf, pickMergeFiles } from "@/lib/mergeDoPdf";
+import { photosToPdf } from "@/lib/photoToPdf";
 
 type Me = { id: string; name: string; isAdmin: boolean; canManage: boolean; canSeeAll?: boolean };
 type Emp = { id: string; name: string; role: string | null };
@@ -183,12 +184,14 @@ export default function DoBoard({ me, email, employees, orders: ordersProp, step
 
   const upload = async (o: Order, list: FileList | null) => {
     if (!list || !list.length) return;
-    const picked = Array.from(list);
-    const bad = picked.find((f) => !(f.type.startsWith("image/") || f.type === "application/pdf" || /\.(pdf|png|jpe?g|webp|gif|heic|heif)$/i.test(f.name)));
+    const raw = Array.from(list);
+    const bad = raw.find((f) => !(f.type.startsWith("image/") || f.type === "application/pdf" || /\.(pdf|png|jpe?g|webp|gif|heic|heif)$/i.test(f.name)));
     if (bad) { showToast(`${t.onlyImgPdf}${bad.name}`); return; }
-    const big = picked.find((f) => f.size > MAX_MB * 1024 * 1024);
-    if (big) { showToast(`${t.tooBig(MAX_MB)}${big.name}`); return; }
     setUploading(o.id);
+    // 照片自动转成 PDF（一次选的几张合成一个），文件名用 DO 号
+    const picked = await photosToPdf(raw, o.do_no || o.title);
+    const big = picked.find((f) => f.size > MAX_MB * 1024 * 1024);
+    if (big) { setUploading(null); showToast(`${t.tooBig(MAX_MB)}${big.name}`); return; }
     let okCount = 0;
     for (const f of picked) {
       const ext = (f.name.match(/\.([a-z0-9]+)$/i)?.[1] ?? (f.type === "application/pdf" ? "pdf" : "png")).toLowerCase();
