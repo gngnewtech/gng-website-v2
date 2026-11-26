@@ -397,19 +397,18 @@ export default function AdminBoard({ employees, tasks: tasksProp, notes: notesPr
                         <span style={{ ...pill, color: m.color, background: m.bg, borderColor: m.bg }}>{m.label}</span>
                       </div>
                     </div>
-                    {pending.length > 0 && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 60 }}>
-                        {pending.map((x) => (
-                          <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, ...(isToday(x) ? { background: "#fffbeb", borderLeft: "3px solid #f59e0b", borderRadius: 4, padding: "3px 8px", marginLeft: -11 } : {}) }}>
-                            <QuadBadge t={x} />
-                            <PrivateBadge t={x} />
-                            <span style={{ color: isToday(x) ? "#0f172a" : "#334155", fontWeight: isToday(x) ? 700 : 400 }}>{x.name}</span>
-                            <StartBadge t={x} />
-                            <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 999, color: TASK_TONE[x.state].color, background: TASK_TONE[x.state].bg }}>{TASK_LABEL[x.state]}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    {pending.length > 0 && (() => {
+                      const todayN = pending.filter(isToday).length;
+                      const doingN = pending.filter((x) => x.state === "doing").length;
+                      return (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13, color: "#475569", paddingLeft: 60 }}>
+                          <span>未完成任务 <b style={{ color: "#0f172a" }}>{pending.length}</b> 项</span>
+                          {todayN > 0 && <span style={{ fontSize: 12, padding: "1px 8px", borderRadius: 999, color: "#c2410c", background: "#fff7ed" }}>今天 {todayN}</span>}
+                          {doingN > 0 && <span style={{ fontSize: 12, padding: "1px 8px", borderRadius: 999, color: TASK_TONE.doing.color, background: TASK_TONE.doing.bg }}>进行中 {doingN}</span>}
+                          <span style={{ marginLeft: "auto", fontSize: 12, color: "#94a3b8" }}>点击查看 ›</span>
+                        </div>
+                      );
+                    })()}
                     {t.length > 0 && pending.length === 0 && (
                       <div style={{ fontSize: 12, color: "#059669", paddingLeft: 60 }}>✓ 今日任务已全部完成</div>
                     )}
